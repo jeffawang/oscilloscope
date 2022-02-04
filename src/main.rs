@@ -299,7 +299,7 @@ struct State {
     depth_texture: texture::Texture,
 }
 
-const NUM_VERTS: usize = 128;
+const NUM_VERTS: usize = 32;
 const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
 const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 // const DIR = vec3(x, y, z)
@@ -312,7 +312,7 @@ fn lightning_step() -> cgmath::Vector3<f32> {
     )
 }
 
-const LINE_THICCNESS: f32 = 0.2;
+const LINE_THICCNESS: f32 = 0.01;
 
 fn calc_verts() -> Vec<Vertex> {
     let mut vectors = vec![vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 0.0)];
@@ -325,10 +325,10 @@ fn calc_verts() -> Vec<Vertex> {
         let next = vec3(curr[0], curr[1], curr[2]) + lightning_step();
 
         vectors.push(next);
-        verts.push(Vertex {
-            color: CYAN,
-            position: next.into(),
-        });
+        // verts.push(Vertex {
+        //     color: CYAN,
+        //     position: next.into(),
+        // });
         lines.extend(elbow(prev, curr, next).iter().map(|&v| Vertex {
             color: RED,
             position: v.into(),
@@ -341,13 +341,13 @@ fn calc_verts() -> Vec<Vertex> {
 fn elbow(prev: Vector3<f32>, curr: Vector3<f32>, next: Vector3<f32>) -> Vec<Vector3<f32>> {
     let e1 = (prev - curr)
         .normalize()
-        .cross(vec3(1.0, 0.0, 0.0))
+        .cross(vec3(0.0, 0.0, 1.0))
         .normalize_to(LINE_THICCNESS);
     let e2 = (next - curr)
         .normalize()
-        .cross(vec3(1.0, 0.0, 0.0))
+        .cross(vec3(0.0, 0.0, 1.0))
         .normalize_to(LINE_THICCNESS);
-    vec![curr + e1, curr - e1, curr + e2, curr - e2]
+    vec![curr + e1, curr - e1, curr - e2, curr + e2]
 }
 
 fn calc_indices(verts: &Vec<Vertex>) -> Vec<u16> {
@@ -587,7 +587,7 @@ impl State {
                 }],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineStrip,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
