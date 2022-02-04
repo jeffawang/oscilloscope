@@ -1,6 +1,6 @@
 mod texture;
 
-use cgmath::{prelude::*, vec3};
+use cgmath::{prelude::*, vec2, vec3, Vector2, Vector3};
 
 use bytemuck::{self, Zeroable};
 use rand::Rng;
@@ -79,19 +79,6 @@ impl InstanceRaw {
         }
     }
 }
-
-const VERTICES: &[Vertex] = &[
-    // Changed
-    Vertex {
-        position: [0.0, 1.0, 0.0],
-        color: [0.0, 1.0, 1.0, 1.0],
-    }, // A
-    Vertex {
-        position: [0.0, 0.0, 0.0],
-        color: [0.0, 1.0, 1.0, 1.0],
-    }, // B
-];
-
 const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 
 #[repr(C)]
@@ -312,31 +299,55 @@ struct State {
     depth_texture: texture::Texture,
 }
 
-const NUM_VERTS: usize = 64;
+const NUM_VERTS: usize = 128;
 const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
+const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 // const DIR = vec3(x, y, z)
 
-fn calc_verts() -> Vec<Vertex> {
-    let mut vectors = vec![[0.0, 0.0, 0.0 as f32]];
-    // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
-    for i in 1..NUM_VERTS {
-        let prev = vectors[i - 1];
-        let next = cgmath::vec3(prev[0], prev[1], prev[2])
-            + cgmath::vec3(
-                rand::thread_rng().gen_range(-0.4..0.4),
-                0.3 - rand::thread_rng().gen_range(0.2..0.3),
-                0.0,
-            );
+fn lightning_step() -> cgmath::Vector3<f32> {
+    cgmath::vec3(
+        rand::thread_rng().gen_range(-0.4..0.4),
+        0.3 - rand::thread_rng().gen_range(0.2..0.3),
+        0.0,
+    )
+}
 
-        vectors.push(next.into());
-    }
-    vectors
-        .iter()
-        .map(|&v| Vertex {
-            position: v,
+const LINE_THICCNESS: f32 = 0.2;
+
+fn calc_verts() -> Vec<Vertex> {
+    let mut vectors = vec![vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 0.0)];
+    let mut verts = vec![];
+    let mut lines = vec![];
+    // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
+    for i in 2..NUM_VERTS {
+        let prev = vectors[i - 2];
+        let curr = vectors[i - 1];
+        let next = vec3(curr[0], curr[1], curr[2]) + lightning_step();
+
+        vectors.push(next);
+        verts.push(Vertex {
             color: CYAN,
-        })
-        .collect()
+            position: next.into(),
+        });
+        lines.extend(elbow(prev, curr, next).iter().map(|&v| Vertex {
+            color: RED,
+            position: v.into(),
+        }));
+    }
+    verts.extend(lines);
+    verts
+}
+
+fn elbow(prev: Vector3<f32>, curr: Vector3<f32>, next: Vector3<f32>) -> Vec<Vector3<f32>> {
+    let e1 = (prev - curr)
+        .normalize()
+        .cross(vec3(1.0, 0.0, 0.0))
+        .normalize_to(LINE_THICCNESS);
+    let e2 = (next - curr)
+        .normalize()
+        .cross(vec3(1.0, 0.0, 0.0))
+        .normalize_to(LINE_THICCNESS);
+    vec![curr + e1, curr - e1, curr + e2, curr - e2]
 }
 
 fn calc_indices(verts: &Vec<Vertex>) -> Vec<u16> {
@@ -454,9 +465,9 @@ impl State {
         });
 
         let color = wgpu::Color {
-            r: 1.0,
-            g: 0.2,
-            b: 0.3,
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
             a: 1.0,
         };
 
@@ -605,6 +616,7 @@ impl State {
 
         let verts = calc_verts();
         let indices = calc_indices(&verts);
+        let num_indices = indices.len() as u32;
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -617,8 +629,6 @@ impl State {
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-
-        let num_indices = INDICES.len() as u32;
 
         let num_vertices = 16;
         let angle = std::f32::consts::PI * 2.0 / num_vertices as f32;
@@ -703,9 +713,9 @@ impl State {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 self.color = wgpu::Color {
-                    r: 1.0,
-                    g: position.x / (self.size.width as f64),
-                    b: position.y / (self.size.height as f64),
+                    r: 0.0,
+                    g: 0.05 * position.x / (self.size.width as f64),
+                    b: 0.05 * position.y / (self.size.height as f64),
                     a: 1.0,
                 };
                 false
