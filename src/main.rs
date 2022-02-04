@@ -316,30 +316,31 @@ const NUM_VERTS: usize = 64;
 const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
 // const DIR = vec3(x, y, z)
 
-fn calc_verts() -> [Vertex; NUM_VERTS] {
-    let mut vectors = [cgmath::Vector3::<f32> {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
-    }; NUM_VERTS];
-    vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
+fn calc_verts() -> Vec<Vertex> {
+    let mut vectors = vec![[0.0, 0.0, 0.0 as f32]];
+    // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
     for i in 1..NUM_VERTS {
         let prev = vectors[i - 1];
-        vectors[i] = prev
+        let next = cgmath::vec3(prev[0], prev[1], prev[2])
             + cgmath::vec3(
                 rand::thread_rng().gen_range(-0.4..0.4),
                 0.3 - rand::thread_rng().gen_range(0.2..0.3),
                 0.0,
             );
+
+        vectors.push(next.into());
     }
-    vectors.map(|v| Vertex {
-        position: v.into(),
-        color: CYAN,
-    })
+    vectors
+        .iter()
+        .map(|&v| Vertex {
+            position: v,
+            color: CYAN,
+        })
+        .collect()
 }
 
-fn calc_indices() -> [u16; NUM_VERTS] {
-    (0..NUM_VERTS as u16)
+fn calc_indices(verts: &Vec<Vertex>) -> Vec<u16> {
+    (0..verts.len() as u16)
         .collect::<Vec<u16>>()
         .try_into()
         .unwrap()
@@ -603,7 +604,7 @@ impl State {
         });
 
         let verts = calc_verts();
-        let indices = calc_indices();
+        let indices = calc_indices(&verts);
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
