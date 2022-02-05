@@ -1,11 +1,9 @@
 // mod pipeline;
 mod texture;
 
-use cgmath::{prelude::*, vec2, vec3, Vector2, Vector3};
+use bytemuck::{self};
 
-use bytemuck::{self, Zeroable};
-use rand::Rng;
-use wgpu::{util::DeviceExt, VERTEX_STRIDE_ALIGNMENT};
+use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -21,229 +19,281 @@ const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
     // NUM_INSTANCES_PER_ROW as f32 * 0.5,
 );
 
-struct Instance {
-    position: cgmath::Vector3<f32>,
-    rotation: cgmath::Quaternion<f32>,
-}
+mod instancing {
+    use cgmath::prelude::*;
 
-impl Instance {
-    fn to_raw(&self) -> InstanceRaw {
-        InstanceRaw {
-            model: (cgmath::Matrix4::from_translation(self.position)
-                * cgmath::Matrix4::from(self.rotation))
-            .into(),
-        }
-    }
-}
+    use wgpu::util::DeviceExt;
 
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct InstanceRaw {
-    model: [[f32; 4]; 4],
-}
+    use super::INSTANCE_DISPLACEMENT;
 
-impl InstanceRaw {
-    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-        use std::mem;
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
-            // We still need to switch from using a step mode of Vertex to Instance
-            // This means that our shaders wil only change to use the next
-            // instance when the shader starts processing a new instance.
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    // While our vertex shader only use locations 0 and 1 now,
-                    // we will use 2,3, and 4 in later tutorials.
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                // A mat4 takes up 4 vertex slots as it is technically 4 vec4s. We need to define a slot
-                // for each vec4 and reassemble the mat4 in the shader.
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-            ],
-        }
-    }
-}
+    use super::NUM_INSTANCES_PER_ROW;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    color: [f32; 4],
-}
-
-impl Vertex {
-    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x4,
-                },
-            ],
-        }
-    }
-}
-
-struct CameraController {
-    speed: f32,
-    is_forward_pressed: bool,
-    is_backward_pressed: bool,
-    is_left_pressed: bool,
-    is_right_pressed: bool,
-}
-
-impl CameraController {
-    fn new(speed: f32) -> Self {
-        Self {
-            speed,
-            is_forward_pressed: false,
-            is_backward_pressed: false,
-            is_left_pressed: false,
-            is_right_pressed: false,
-        }
+    pub(crate) struct Instance {
+        pub(crate) position: cgmath::Vector3<f32>,
+        pub(crate) rotation: cgmath::Quaternion<f32>,
     }
 
-    fn process_events(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(keycode),
-                        ..
-                    },
-                ..
-            } => {
-                let is_pressed = *state == ElementState::Pressed;
-                match keycode {
-                    VirtualKeyCode::W | VirtualKeyCode::Up => {
-                        self.is_forward_pressed = is_pressed;
-                        true
-                    }
-                    VirtualKeyCode::A | VirtualKeyCode::Left => {
-                        self.is_left_pressed = is_pressed;
-                        true
-                    }
-                    VirtualKeyCode::S | VirtualKeyCode::Down => {
-                        self.is_backward_pressed = is_pressed;
-                        true
-                    }
-                    VirtualKeyCode::D | VirtualKeyCode::Right => {
-                        self.is_right_pressed = is_pressed;
-                        true
-                    }
-                    _ => false,
-                }
+    impl Instance {
+        pub(crate) fn to_raw(&self) -> InstanceRaw {
+            InstanceRaw {
+                model: (cgmath::Matrix4::from_translation(self.position)
+                    * cgmath::Matrix4::from(self.rotation))
+                .into(),
             }
-            _ => false,
         }
     }
 
-    fn update_camera(&self, camera: &mut Camera) {
-        use cgmath::InnerSpace;
-        let forward = camera.target - camera.eye;
-        let forward_norm = forward.normalize();
-        let forward_mag = forward.magnitude();
+    pub(crate) fn instancing(device: &wgpu::Device) -> (Vec<Instance>, wgpu::Buffer) {
+        let instances = (0..NUM_INSTANCES_PER_ROW)
+            .flat_map(|_z| {
+                (0..NUM_INSTANCES_PER_ROW).map(move |_x| {
+                    let position = cgmath::Vector3 {
+                        x: 0.0,
+                        // x: x as f32,
+                        y: 0.0,
+                        z: 0.0,
+                    } - INSTANCE_DISPLACEMENT;
 
-        // Prevents glitching when camera gets too close to the
-        // center of the scene.
-        if self.is_forward_pressed && forward_mag > self.speed {
-            camera.eye += forward_norm * self.speed;
-        }
-        if self.is_backward_pressed {
-            camera.eye -= forward_norm * self.speed;
-        }
+                    let rotation = if position.is_zero() {
+                        // this is needed so an object at (0,0,0) won't get scaled to zero
+                        // as Quaternions can affect scale if they're not created correctly
+                        cgmath::Quaternion::from_axis_angle(
+                            cgmath::Vector3::unit_z(),
+                            cgmath::Deg(0.0),
+                        )
+                    } else {
+                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                    };
 
-        let right = forward_norm.cross(camera.up);
+                    Instance { position, rotation }
+                })
+            })
+            .collect::<Vec<_>>();
+        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        (instances, instance_buffer)
+    }
 
-        // Redo radius calc in case the fowrard/backward is pressed.
-        let forward = camera.target - camera.eye;
-        let forward_mag = forward.magnitude();
+    #[repr(C)]
+    #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+    pub(crate) struct InstanceRaw {
+        pub(crate) model: [[f32; 4]; 4],
+    }
 
-        if self.is_right_pressed {
-            // Rescale the distance between the target and eye so
-            // that it doesn't change. The eye therefore still
-            // lies on the circle made by the target and eye.
-            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
-        }
-        if self.is_left_pressed {
-            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
+    impl InstanceRaw {
+        pub(crate) fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+            use std::mem;
+            wgpu::VertexBufferLayout {
+                array_stride: mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
+                // We still need to switch from using a step mode of Vertex to Instance
+                // This means that our shaders wil only change to use the next
+                // instance when the shader starts processing a new instance.
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        offset: 0,
+                        // While our vertex shader only use locations 0 and 1 now,
+                        // we will use 2,3, and 4 in later tutorials.
+                        shader_location: 5,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    // A mat4 takes up 4 vertex slots as it is technically 4 vec4s. We need to define a slot
+                    // for each vec4 and reassemble the mat4 in the shader.
+                    wgpu::VertexAttribute {
+                        offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
+                        shader_location: 6,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                        shader_location: 7,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
+                        shader_location: 8,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                ],
+            }
         }
     }
 }
 
-struct Camera {
-    eye: cgmath::Point3<f32>,
-    target: cgmath::Point3<f32>,
-    up: cgmath::Vector3<f32>,
-    aspect: f32,
-    fovy: f32,
-    znear: f32,
-    zfar: f32,
-}
+mod vertex {
+    #[repr(C)]
+    #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+    pub(crate) struct Vertex {
+        pub(crate) position: [f32; 3],
+        pub(crate) color: [f32; 4],
+    }
 
-#[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.5, 0.0,
-    0.0, 0.0, 0.5, 1.0,
-);
-
-impl Camera {
-    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
-        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
-        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
-
-        OPENGL_TO_WGPU_MATRIX * proj * view
+    impl Vertex {
+        pub(crate) fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+            wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x3,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                        shader_location: 1,
+                        format: wgpu::VertexFormat::Float32x4,
+                    },
+                ],
+            }
+        }
     }
 }
 
-// We need this for Rust to store our data correctly for the shaders
-#[repr(C)]
-// This is so we can store this in a buffer
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct CameraUniform {
-    // Can't use cgmath with bytemuck directly, so we'll have
-    // to convert the Matrix4 into a 4x4 f32 array.
-    view_proj: [[f32; 4]; 4],
-}
+mod camera {
+    use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
 
-impl CameraUniform {
-    fn new() -> Self {
-        use cgmath::SquareMatrix;
-        Self {
-            view_proj: cgmath::Matrix4::identity().into(),
+    pub(crate) struct CameraController {
+        pub(crate) speed: f32,
+        pub(crate) is_forward_pressed: bool,
+        pub(crate) is_backward_pressed: bool,
+        pub(crate) is_left_pressed: bool,
+        pub(crate) is_right_pressed: bool,
+    }
+
+    impl CameraController {
+        pub(crate) fn new(speed: f32) -> Self {
+            Self {
+                speed,
+                is_forward_pressed: false,
+                is_backward_pressed: false,
+                is_left_pressed: false,
+                is_right_pressed: false,
+            }
+        }
+
+        pub(crate) fn process_events(&mut self, event: &WindowEvent) -> bool {
+            match event {
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state,
+                            virtual_keycode: Some(keycode),
+                            ..
+                        },
+                    ..
+                } => {
+                    let is_pressed = *state == ElementState::Pressed;
+                    match keycode {
+                        VirtualKeyCode::W | VirtualKeyCode::Up => {
+                            self.is_forward_pressed = is_pressed;
+                            true
+                        }
+                        VirtualKeyCode::A | VirtualKeyCode::Left => {
+                            self.is_left_pressed = is_pressed;
+                            true
+                        }
+                        VirtualKeyCode::S | VirtualKeyCode::Down => {
+                            self.is_backward_pressed = is_pressed;
+                            true
+                        }
+                        VirtualKeyCode::D | VirtualKeyCode::Right => {
+                            self.is_right_pressed = is_pressed;
+                            true
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        pub(crate) fn update_camera(&self, camera: &mut Camera) {
+            use cgmath::InnerSpace;
+            let forward = camera.target - camera.eye;
+            let forward_norm = forward.normalize();
+            let forward_mag = forward.magnitude();
+
+            // Prevents glitching when camera gets too close to the
+            // center of the scene.
+            if self.is_forward_pressed && forward_mag > self.speed {
+                camera.eye += forward_norm * self.speed;
+            }
+            if self.is_backward_pressed {
+                camera.eye -= forward_norm * self.speed;
+            }
+
+            let right = forward_norm.cross(camera.up);
+
+            // Redo radius calc in case the fowrard/backward is pressed.
+            let forward = camera.target - camera.eye;
+            let forward_mag = forward.magnitude();
+
+            if self.is_right_pressed {
+                // Rescale the distance between the target and eye so
+                // that it doesn't change. The eye therefore still
+                // lies on the circle made by the target and eye.
+                camera.eye =
+                    camera.target - (forward + right * self.speed).normalize() * forward_mag;
+            }
+            if self.is_left_pressed {
+                camera.eye =
+                    camera.target - (forward - right * self.speed).normalize() * forward_mag;
+            }
         }
     }
 
-    fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_proj = camera.build_view_projection_matrix().into();
+    pub(crate) struct Camera {
+        pub(crate) eye: cgmath::Point3<f32>,
+        pub(crate) target: cgmath::Point3<f32>,
+        pub(crate) up: cgmath::Vector3<f32>,
+        pub(crate) aspect: f32,
+        pub(crate) fovy: f32,
+        pub(crate) znear: f32,
+        pub(crate) zfar: f32,
+    }
+
+    #[rustfmt::skip]
+    pub(crate) const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.5, 0.0,
+        0.0, 0.0, 0.5, 1.0,
+    );
+
+    impl Camera {
+        pub(crate) fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+            let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
+            let proj =
+                cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+
+            OPENGL_TO_WGPU_MATRIX * proj * view
+        }
+    }
+
+    // We need this for Rust to store our data correctly for the shaders
+    #[repr(C)]
+    // This is so we can store this in a buffer
+    #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+    pub(crate) struct CameraUniform {
+        pub(crate) view_proj: [[f32; 4]; 4],
+    }
+
+    impl CameraUniform {
+        pub(crate) fn new() -> Self {
+            use cgmath::SquareMatrix;
+            Self {
+                view_proj: cgmath::Matrix4::identity().into(),
+            }
+        }
+
+        pub(crate) fn update_view_proj(&mut self, camera: &Camera) {
+            self.view_proj = camera.build_view_projection_matrix().into();
+        }
     }
 }
 
@@ -262,80 +312,93 @@ struct State {
     use_complex: bool,
 
     diffuse_bind_group: wgpu::BindGroup,
-    diffuse_texture: texture::Texture,
 
     challenge_diffuse_bind_group: wgpu::BindGroup,
-    challenge_diffuse_texture: texture::Texture,
 
-    camera: Camera,
-    camera_uniform: CameraUniform,
+    camera: camera::Camera,
+    camera_uniform: camera::CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
-    camera_controller: CameraController,
+    camera_controller: camera::CameraController,
 
-    instances: Vec<Instance>,
+    instances: Vec<instancing::Instance>,
     instance_buffer: wgpu::Buffer,
 
     depth_texture: texture::Texture,
 }
 
-const NUM_VERTS: usize = 32;
-const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
-const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-// const DIR = vec3(x, y, z)
+mod lightning {
+    use super::vertex;
 
-fn lightning_step() -> cgmath::Vector3<f32> {
-    cgmath::vec3(
-        rand::thread_rng().gen_range(-0.4..0.4),
-        0.3 - rand::thread_rng().gen_range(0.2..0.3),
-        0.0,
-    )
-}
+    use cgmath::vec3;
+    use cgmath::InnerSpace;
 
-const LINE_THICCNESS: f32 = 0.01;
+    use cgmath::Vector3;
+    use rand::Rng;
 
-fn calc_verts() -> Vec<Vertex> {
-    let mut vectors = vec![vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 0.0)];
-    let mut verts = vec![];
-    let mut lines = vec![];
-    // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
-    for i in 2..NUM_VERTS {
-        let prev = vectors[i - 2];
-        let curr = vectors[i - 1];
-        let next = vec3(curr[0], curr[1], curr[2]) + lightning_step();
+    pub(crate) const NUM_VERTS: usize = 32;
 
-        vectors.push(next);
-        // verts.push(Vertex {
-        //     color: CYAN,
-        //     position: next.into(),
-        // });
-        lines.extend(elbow(prev, curr, next).iter().map(|&v| Vertex {
-            color: RED,
-            position: v.into(),
-        }));
+    pub(crate) const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
+
+    pub(crate) const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+
+    pub(crate) fn lightning_step() -> cgmath::Vector3<f32> {
+        cgmath::vec3(
+            rand::thread_rng().gen_range(-0.4..0.4),
+            0.3 - rand::thread_rng().gen_range(0.2..0.3),
+            0.0,
+        )
     }
-    verts.extend(lines);
-    verts
-}
 
-fn elbow(prev: Vector3<f32>, curr: Vector3<f32>, next: Vector3<f32>) -> Vec<Vector3<f32>> {
-    let e1 = (prev - curr)
-        .normalize()
-        .cross(vec3(0.0, 0.0, 1.0))
-        .normalize_to(LINE_THICCNESS);
-    let e2 = (next - curr)
-        .normalize()
-        .cross(vec3(0.0, 0.0, 1.0))
-        .normalize_to(LINE_THICCNESS);
-    vec![curr + e1, curr - e1, curr - e2, curr + e2]
-}
+    pub(crate) const LINE_THICCNESS: f32 = 0.01;
 
-fn calc_indices(verts: &Vec<Vertex>) -> Vec<u16> {
-    (0..verts.len() as u16)
-        .collect::<Vec<u16>>()
-        .try_into()
-        .unwrap()
+    pub(crate) fn calc_verts() -> Vec<vertex::Vertex> {
+        let mut vectors = vec![vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 0.0)];
+        let mut verts = vec![];
+        let mut lines = vec![];
+        // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
+        for i in 2..NUM_VERTS {
+            let prev = vectors[i - 2];
+            let curr = vectors[i - 1];
+            let next = vec3(curr[0], curr[1], curr[2]) + lightning_step();
+
+            vectors.push(next);
+            // verts.push(Vertex {
+            //     color: CYAN,
+            //     position: next.into(),
+            // });
+            lines.extend(elbow(prev, curr, next).iter().map(|&v| vertex::Vertex {
+                color: RED,
+                position: v.into(),
+            }));
+        }
+        verts.extend(lines);
+        verts
+    }
+
+    pub(crate) fn elbow(
+        prev: Vector3<f32>,
+        curr: Vector3<f32>,
+        next: Vector3<f32>,
+    ) -> Vec<Vector3<f32>> {
+        let e1 = (prev - curr)
+            .normalize()
+            .cross(vec3(0.0, 0.0, 1.0))
+            .normalize_to(LINE_THICCNESS);
+        let e2 = (next - curr)
+            .normalize()
+            .cross(vec3(0.0, 0.0, 1.0))
+            .normalize_to(LINE_THICCNESS);
+        vec![curr + e1, curr - e1, curr - e2, curr + e2]
+    }
+
+    pub(crate) fn calc_indices(verts: &Vec<vertex::Vertex>) -> Vec<u16> {
+        (0..verts.len() as u16)
+            .collect::<Vec<u16>>()
+            .try_into()
+            .unwrap()
+    }
 }
 
 impl State {
@@ -459,7 +522,7 @@ impl State {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        let camera = Camera {
+        let camera = camera::Camera {
             // position the camera one unit up and 2 units back
             // +z is out of the screen
             eye: (0.0, 0.0, 2.0).into(),
@@ -473,7 +536,7 @@ impl State {
             zfar: 100.0,
         };
 
-        let mut camera_uniform = CameraUniform::new();
+        let mut camera_uniform = camera::CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -484,9 +547,9 @@ impl State {
         let (camera_bind_group_layout, camera_bind_group) =
             bind_group_layouts(&device, &camera_buffer);
 
-        let camera_controller = CameraController::new(0.2);
+        let camera_controller = camera::CameraController::new(0.2);
 
-        let (instances, instance_buffer) = instancing(&device);
+        let (instances, instance_buffer) = instancing::instancing(&device);
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
@@ -504,7 +567,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc(), InstanceRaw::desc()],
+                buffers: &[vertex::Vertex::desc(), instancing::InstanceRaw::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -543,8 +606,8 @@ impl State {
             multiview: None,
         });
 
-        let verts = calc_verts();
-        let indices = calc_indices(&verts);
+        let verts = lightning::calc_verts();
+        let indices = lightning::calc_indices(&verts);
         let num_indices = indices.len() as u32;
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -574,8 +637,6 @@ impl State {
             num_indices,
             use_complex,
             diffuse_bind_group,
-            diffuse_texture,
-            challenge_diffuse_texture,
             challenge_diffuse_bind_group,
             camera,
             camera_uniform,
@@ -695,38 +756,6 @@ impl State {
 
         Ok(())
     }
-}
-
-fn instancing(device: &wgpu::Device) -> (Vec<Instance>, wgpu::Buffer) {
-    let instances = (0..NUM_INSTANCES_PER_ROW)
-        .flat_map(|z| {
-            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                let position = cgmath::Vector3 {
-                    x: 0.0,
-                    // x: x as f32,
-                    y: 0.0,
-                    z: 0.0,
-                } - INSTANCE_DISPLACEMENT;
-
-                let rotation = if position.is_zero() {
-                    // this is needed so an object at (0,0,0) won't get scaled to zero
-                    // as Quaternions can affect scale if they're not created correctly
-                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
-                } else {
-                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                };
-
-                Instance { position, rotation }
-            })
-        })
-        .collect::<Vec<_>>();
-    let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-    let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Instance buffer"),
-        contents: bytemuck::cast_slice(&instance_data),
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-    (instances, instance_buffer)
 }
 
 fn bind_group_layouts(
