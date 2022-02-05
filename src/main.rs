@@ -1,3 +1,4 @@
+// mod pipeline;
 mod texture;
 
 use cgmath::{prelude::*, vec2, vec3, Vector2, Vector3};
@@ -79,7 +80,6 @@ impl InstanceRaw {
         }
     }
 }
-const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -89,22 +89,6 @@ struct Vertex {
 }
 
 impl Vertex {
-    // Note: Could use wgpu::vertex_attr_array here (with some caveats).
-    // If we did that, we'd need to use a 'static lifetime or make it const.
-    // impl Vertex {
-    //     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-    //     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
-
-    //     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-    //         use std::mem;
-
-    //         wgpu::VertexBufferLayout {
-    //             array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-    //             step_mode: wgpu::VertexStepMode::Vertex,
-    //             attributes: &Self::ATTRIBS,
-    //         }
-    //     }
-    // }
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
@@ -275,10 +259,7 @@ struct State {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
 
-    challenge_vertex_buffer: wgpu::Buffer,
-    challenge_index_buffer: wgpu::Buffer,
     use_complex: bool,
-    num_challenge_indices: u32,
 
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
@@ -379,7 +360,7 @@ impl State {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::empty(),
+                    features: wgpu::Features::POLYGON_MODE_LINE,
                     limits: wgpu::Limits::default(),
                 },
                 None, // Trace path
@@ -500,64 +481,12 @@ impl State {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
+        let (camera_bind_group_layout, camera_bind_group) =
+            bind_group_layouts(&device, &camera_buffer);
 
         let camera_controller = CameraController::new(0.2);
 
-        let instances = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|z| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let position = cgmath::Vector3 {
-                        x: 0.0,
-                        // x: x as f32,
-                        y: 0.0,
-                        z: 0.0,
-                    } - INSTANCE_DISPLACEMENT;
-
-                    let rotation = if position.is_zero() {
-                        // this is needed so an object at (0,0,0) won't get scaled to zero
-                        // as Quaternions can affect scale if they're not created correctly
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
-                    } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
-                    };
-
-                    Instance { position, rotation }
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let (instances, instance_buffer) = instancing(&device);
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
@@ -593,7 +522,7 @@ impl State {
                 cull_mode: Some(wgpu::Face::Back),
                 // Setting this to anything other than Fill
                 // requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
+                polygon_mode: wgpu::PolygonMode::Line,
                 // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
                 // Requires Features::CONSERVATIVE_RASTERIZATION
@@ -630,41 +559,6 @@ impl State {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        let num_vertices = 16;
-        let angle = std::f32::consts::PI * 2.0 / num_vertices as f32;
-        let challenge_verts = (0..num_vertices)
-            .map(|v| {
-                let theta = angle * v as f32;
-                // Vertex {
-                //     position: [0.5 * theta.cos(), -0.5 * theta.sin(), 0.0],
-                //     color: [(1.0 + theta.cos()) / 2.0, (1.0 + theta.sin()) / 2.0, 1.0],
-                // }
-                Vertex {
-                    position: [0.5 * theta.cos(), -0.5 * theta.sin(), 0.0],
-                    color: [0.0, 1.0, 1.0, 1.0],
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let num_triangles = num_vertices - 2;
-        let challenge_indices = (1u16..num_triangles + 1)
-            .into_iter()
-            .flat_map(|i| vec![i + 1, i, 0])
-            .collect::<Vec<_>>();
-        let num_challenge_indices = challenge_indices.len() as u32;
-
-        let challenge_vertex_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Challenge Vertex Buffer"),
-                contents: bytemuck::cast_slice(&challenge_verts),
-                usage: wgpu::BufferUsages::VERTEX,
-            });
-        let challenge_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Challenge Index Buffer"),
-            contents: bytemuck::cast_slice(&challenge_indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
         let use_complex = false;
 
         Self {
@@ -679,9 +573,6 @@ impl State {
             index_buffer,
             num_indices,
             use_complex,
-            challenge_index_buffer,
-            challenge_vertex_buffer,
-            num_challenge_indices,
             diffuse_bind_group,
             diffuse_texture,
             challenge_diffuse_texture,
@@ -780,15 +671,7 @@ impl State {
             });
             render_pass.set_pipeline(&self.render_pipeline);
 
-            let data = if self.use_complex {
-                (
-                    &self.challenge_vertex_buffer,
-                    &self.challenge_index_buffer,
-                    self.num_challenge_indices,
-                )
-            } else {
-                (&self.vertex_buffer, &self.index_buffer, self.num_indices)
-            };
+            let data = (&self.vertex_buffer, &self.index_buffer, self.num_indices);
 
             let bind_group = if self.use_complex {
                 &self.challenge_diffuse_bind_group
@@ -812,6 +695,67 @@ impl State {
 
         Ok(())
     }
+}
+
+fn instancing(device: &wgpu::Device) -> (Vec<Instance>, wgpu::Buffer) {
+    let instances = (0..NUM_INSTANCES_PER_ROW)
+        .flat_map(|z| {
+            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                let position = cgmath::Vector3 {
+                    x: 0.0,
+                    // x: x as f32,
+                    y: 0.0,
+                    z: 0.0,
+                } - INSTANCE_DISPLACEMENT;
+
+                let rotation = if position.is_zero() {
+                    // this is needed so an object at (0,0,0) won't get scaled to zero
+                    // as Quaternions can affect scale if they're not created correctly
+                    cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(0.0))
+                } else {
+                    cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                };
+
+                Instance { position, rotation }
+            })
+        })
+        .collect::<Vec<_>>();
+    let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+    let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Instance buffer"),
+        contents: bytemuck::cast_slice(&instance_data),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    (instances, instance_buffer)
+}
+
+fn bind_group_layouts(
+    device: &wgpu::Device,
+    camera_buffer: &wgpu::Buffer,
+) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+    let camera_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: Some("camera_bind_group_layout"),
+        });
+    let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &camera_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: camera_buffer.as_entire_binding(),
+        }],
+        label: Some("camera_bind_group"),
+    });
+    (camera_bind_group_layout, camera_bind_group)
 }
 
 fn main() {
