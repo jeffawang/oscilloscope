@@ -297,37 +297,6 @@ mod camera {
     }
 }
 
-struct State {
-    surface: wgpu::Surface,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
-    color: wgpu::Color,
-    render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
-
-    use_complex: bool,
-
-    diffuse_bind_group: wgpu::BindGroup,
-
-    challenge_diffuse_bind_group: wgpu::BindGroup,
-
-    camera: camera::Camera,
-    camera_uniform: camera::CameraUniform,
-    camera_buffer: wgpu::Buffer,
-    camera_bind_group: wgpu::BindGroup,
-
-    camera_controller: camera::CameraController,
-
-    instances: Vec<instancing::Instance>,
-    instance_buffer: wgpu::Buffer,
-
-    depth_texture: texture::Texture,
-}
-
 mod lightning {
     use super::vertex;
 
@@ -399,6 +368,37 @@ mod lightning {
             .try_into()
             .unwrap()
     }
+}
+
+struct State {
+    surface: wgpu::Surface,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
+    size: winit::dpi::PhysicalSize<u32>,
+    color: wgpu::Color,
+    render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
+
+    use_complex: bool,
+
+    diffuse_bind_group: wgpu::BindGroup,
+
+    challenge_diffuse_bind_group: wgpu::BindGroup,
+
+    camera: camera::Camera,
+    camera_uniform: camera::CameraUniform,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
+
+    camera_controller: camera::CameraController,
+
+    instances: Vec<instancing::Instance>,
+    instance_buffer: wgpu::Buffer,
+
+    depth_texture: texture::Texture,
 }
 
 impl State {
