@@ -1,4 +1,3 @@
-
 use wgpu::util::DeviceExt;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
 
@@ -101,12 +100,12 @@ pub(crate) struct Camera {
 }
 
 #[rustfmt::skip]
-    pub(crate) const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.5, 0.0,
-        0.0, 0.0, 0.5, 1.0,
-    );
+pub(crate) const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.0,
+    0.0, 0.0, 0.5, 1.0,
+);
 
 impl Camera {
     pub(crate) fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
