@@ -12,15 +12,6 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-const NUM_INSTANCES_PER_ROW: u32 = 1;
-const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
-    // NUM_INSTANCES_PER_ROW as f32 * 0.5,
-    0.0 * NUM_INSTANCES_PER_ROW as f32 * 0.5,
-    0.0,
-    0.0 * NUM_INSTANCES_PER_ROW as f32 * 0.5,
-    // NUM_INSTANCES_PER_ROW as f32 * 0.5,
-);
-
 mod vertex {
     #[repr(C)]
     #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -52,7 +43,6 @@ mod vertex {
 }
 
 mod lightning {
-    use core::num;
     use std::f32::consts::PI;
 
     use crate::vertex::Vertex;
@@ -159,9 +149,6 @@ struct State {
 
     diffuse_bind_group: wgpu::BindGroup,
 
-    instances: Vec<instancing::Instance>,
-    instance_buffer: wgpu::Buffer,
-
     depth_texture: texture::Texture,
 }
 
@@ -217,9 +204,6 @@ impl State {
 
         // let camera = camera::new_camera(&config, &device);
 
-        let (instances, instance_buffer) =
-            instancing::new(&device, NUM_INSTANCES_PER_ROW, INSTANCE_DISPLACEMENT);
-
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
@@ -236,7 +220,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[vertex::Vertex::desc(), instancing::InstanceRaw::desc()],
+                buffers: &[vertex::Vertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -307,8 +291,6 @@ impl State {
             num_indices,
             use_complex,
             diffuse_bind_group,
-            instances,
-            instance_buffer,
             depth_texture,
         }
     }
@@ -404,11 +386,12 @@ impl State {
             // render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, data.0.slice(..));
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            // render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
             render_pass.set_index_buffer(data.1.slice(..), wgpu::IndexFormat::Uint16);
 
-            render_pass.draw_indexed(0..data.2, 0, 0..self.instances.len() as _);
+            render_pass.draw_indexed(0..data.2, 0, 0..1 as _);
+            // render_pass.draw(0..self.num_indices, 0..1)
         }
 
         // submit will accept anything that implements IntoIter
