@@ -52,6 +52,11 @@ mod vertex {
 }
 
 mod lightning {
+    use core::num;
+    use std::f32::consts::PI;
+
+    use crate::vertex::Vertex;
+
     use super::vertex;
 
     use cgmath::vec3;
@@ -65,6 +70,7 @@ mod lightning {
     pub(crate) const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
 
     pub(crate) const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+    pub(crate) const YELLOW: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
 
     pub(crate) fn lightning_step() -> cgmath::Vector3<f32> {
         cgmath::vec3(
@@ -81,6 +87,18 @@ mod lightning {
         let mut verts = vec![];
         let mut lines = vec![];
         // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
+
+        verts.extend((1..NUM_VERTS).map(|i| {
+            const CIRCLE_RADIUS: f32 = 0.5;
+            let theta = 2.0 * PI / i as f32;
+            let x = CIRCLE_RADIUS * theta.cos();
+            let y = CIRCLE_RADIUS * theta.sin();
+            Vertex {
+                color: YELLOW,
+                position: [x, y, 0.0],
+            }
+        }));
+
         for i in 2..NUM_VERTS {
             let prev = vectors[i - 2];
             let curr = vectors[i - 1];
@@ -140,8 +158,6 @@ struct State {
 
     diffuse_bind_group: wgpu::BindGroup,
 
-    camera: camera::Cam,
-
     instances: Vec<instancing::Instance>,
     instance_buffer: wgpu::Buffer,
 
@@ -198,7 +214,7 @@ impl State {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        let camera = camera::new_camera(&config, &device);
+        // let camera = camera::new_camera(&config, &device);
 
         let (instances, instance_buffer) =
             instancing::new(&device, NUM_INSTANCES_PER_ROW, INSTANCE_DISPLACEMENT);
@@ -209,7 +225,7 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout, &camera.bind_group_layout],
+                bind_group_layouts: &[&texture_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -231,13 +247,14 @@ impl State {
                 }],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                topology: wgpu::PrimitiveTopology::PointList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
                 // Setting this to anything other than Fill
                 // requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Line,
+                // polygon_mode: wgpu::PolygonMode::Line,
+                polygon_mode: wgpu::PolygonMode::Fill,
                 // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
                 // Requires Features::CONSERVATIVE_RASTERIZATION
@@ -289,7 +306,6 @@ impl State {
             num_indices,
             use_complex,
             diffuse_bind_group,
-            camera,
             instances,
             instance_buffer,
             depth_texture,
@@ -308,7 +324,6 @@ impl State {
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
-        self.camera.controller.process_events(event);
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 self.color = wgpu::Color {
@@ -336,15 +351,15 @@ impl State {
     }
 
     fn update(&mut self) {
-        self.camera
-            .controller
-            .update_camera(&mut self.camera.camera);
-        self.camera.uniform.update_view_proj(&self.camera.camera);
-        self.queue.write_buffer(
-            &self.camera.buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera.uniform]),
-        );
+        // self.camera
+        //     .controller
+        //     .update_camera(&mut self.camera.camera);
+        // self.camera.uniform.update_view_proj(&self.camera.camera);
+        // self.queue.write_buffer(
+        //     &self.camera.buffer,
+        //     0,
+        //     bytemuck::cast_slice(&[self.camera.uniform]),
+        // );
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -385,7 +400,7 @@ impl State {
 
             let bind_group = &self.diffuse_bind_group;
             render_pass.set_bind_group(0, bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
+            // render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
 
             render_pass.set_vertex_buffer(0, data.0.slice(..));
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
