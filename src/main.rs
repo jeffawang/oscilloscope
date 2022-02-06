@@ -80,15 +80,22 @@ mod lightning {
         let mut lines = vec![];
         // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
 
-        verts.extend((0..=NUM_VERTS).map(|i| {
-            let theta = 2.0 * PI * (i as f32 / NUM_VERTS as f32);
-            let x = CIRCLE_RADIUS * theta.cos();
-            let y = CIRCLE_RADIUS * theta.sin();
-            Vertex {
-                color: YELLOW,
-                position: [x, y, 0.0],
-            }
-        }));
+        verts.extend(
+            (0..=NUM_VERTS)
+                .map(|i| {
+                    let theta = 2.0 * PI * (i as f32 / NUM_VERTS as f32);
+                    let x = CIRCLE_RADIUS * theta.cos();
+                    let y = CIRCLE_RADIUS * theta.sin();
+                    vec3(x, y, 0.0)
+                })
+                .collect::<Vec<_>>()
+                .windows(3)
+                .flat_map(|w| elbow(w[0], w[1], w[2]))
+                .map(|v| vertex::Vertex {
+                    color: YELLOW,
+                    position: v.into(),
+                }),
+        );
 
         for i in 2..NUM_VERTS {
             let prev = vectors[i - 2];
@@ -232,7 +239,7 @@ impl State {
                 }],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineStrip,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
