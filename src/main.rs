@@ -72,6 +72,8 @@ mod lightning {
     pub(crate) const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
     pub(crate) const YELLOW: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
 
+    const CIRCLE_RADIUS: f32 = 0.5;
+
     pub(crate) fn lightning_step() -> cgmath::Vector3<f32> {
         cgmath::vec3(
             rand::thread_rng().gen_range(-0.4..0.4),
@@ -88,9 +90,8 @@ mod lightning {
         let mut lines = vec![];
         // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
 
-        verts.extend((1..NUM_VERTS).map(|i| {
-            const CIRCLE_RADIUS: f32 = 0.5;
-            let theta = 2.0 * PI / i as f32;
+        verts.extend((0..=NUM_VERTS).map(|i| {
+            let theta = 2.0 * PI * (i as f32 / NUM_VERTS as f32);
             let x = CIRCLE_RADIUS * theta.cos();
             let y = CIRCLE_RADIUS * theta.sin();
             Vertex {
@@ -247,7 +248,7 @@ impl State {
                 }],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::PointList,
+                topology: wgpu::PrimitiveTopology::LineStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
