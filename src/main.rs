@@ -127,7 +127,6 @@ struct State {
 
     use_complex: bool,
 
-    diffuse_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
 
     wav_streamer: WavStreamer,
@@ -173,7 +172,6 @@ impl State {
         };
 
         surface.configure(&device, &config);
-        let (texture_bind_group_layout, diffuse_bind_group) = texture_bind_group(&device, &queue);
 
         let color = wgpu::Color::BLACK;
 
@@ -192,7 +190,7 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout],
+                bind_group_layouts: &[],
                 push_constant_ranges: &[],
             });
 
@@ -281,7 +279,6 @@ impl State {
             index_buffer,
             num_indices,
             use_complex,
-            diffuse_bind_group,
             depth_texture,
             wav_streamer,
             rb,
@@ -402,10 +399,6 @@ impl State {
 
             let data = (&self.vertex_buffer, &self.index_buffer, self.num_indices);
 
-            let bind_group = &self.diffuse_bind_group;
-            render_pass.set_bind_group(0, bind_group, &[]);
-            // render_pass.set_bind_group(1, &self.camera.bind_group, &[]);
-
             render_pass.set_vertex_buffer(0, data.0.slice(..));
             // render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
@@ -421,58 +414,6 @@ impl State {
 
         Ok(())
     }
-}
-
-fn texture_bind_group(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
-    let diffuse_bytes = include_bytes!("happy-tree.png");
-    let diffuse_texture =
-        texture::Texture::from_bytes(device, queue, diffuse_bytes, "happy-tree.png").unwrap();
-    let texture_bind_group_layout =
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(
-                        // SamplerBindingType::Comparison is only for TextureSampleType::Depth
-                        // SamplerBindingType::Filtering if the sample_type of the texture is:
-                        //     TextureSampleType::Float { filterable: true }
-                        // Otherwise you'll get an error.
-                        wgpu::SamplerBindingType::Filtering,
-                    ),
-                    count: None,
-                },
-            ],
-            label: Some("texture_bind_group_layout"),
-        });
-    let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &texture_bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-            },
-        ],
-        label: Some("diffuse_bind_group"),
-    });
-    (texture_bind_group_layout, diffuse_bind_group)
 }
 
 fn main() {
