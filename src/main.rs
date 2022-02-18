@@ -1,10 +1,18 @@
 // mod pipeline;
 mod camera;
 mod instancing;
+mod ringbuffer;
+mod sound;
 mod texture;
+
+use std::time::{Duration, Instant, SystemTime};
 
 use bytemuck::{self};
 
+use cgmath::vec3;
+use lightning::RED;
+use ringbuffer::RingBuffer;
+use sound::WavStreamer;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
@@ -44,7 +52,12 @@ mod vertex {
 
 mod lightning {
     use std::f32::consts::PI;
+    use std::fs::File;
+    use std::mem::take;
+    use std::time::Instant;
 
+    use crate::ringbuffer::RingBuffer;
+    use crate::sound::WavStreamer;
     use crate::vertex::Vertex;
 
     use super::vertex;
@@ -53,6 +66,8 @@ mod lightning {
     use cgmath::InnerSpace;
 
     use cgmath::Vector3;
+    use hound::WavSamples;
+    use itertools::Itertools;
     use rand::Rng;
 
     pub(crate) const NUM_VERTS: usize = 32;
@@ -74,45 +89,101 @@ mod lightning {
 
     pub(crate) const LINE_THICCNESS: f32 = 0.01;
 
+    const SAMPLES: usize = 2 * 44100;
+
     pub(crate) fn calc_verts() -> Vec<vertex::Vertex> {
         let mut vectors = vec![vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 0.0)];
         let mut verts = vec![];
-        let mut lines = vec![];
+        // let mut lines = vec![];
         // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
 
+        let stream = WavStreamer::new("03 Blocks.wav");
+
+        let mut rb = RingBuffer::new(stream.take(SAMPLES).collect());
+
         verts.extend(
-            (0..=NUM_VERTS)
-                .map(|i| {
-                    let theta = 2.0 * PI * (i as f32 / NUM_VERTS as f32);
-                    let x = CIRCLE_RADIUS * theta.cos();
-                    let y = CIRCLE_RADIUS * theta.sin();
-                    vec3(x, y, 0.0)
-                })
+            rb.iter()
+                .map(|[x, y]| vec3(x, y, 0.0))
                 .collect::<Vec<_>>()
                 .windows(3)
                 .flat_map(|w| elbow(w[0], w[1], w[2]))
                 .map(|v| vertex::Vertex {
-                    color: YELLOW,
+                    color: RED,
                     position: v.into(),
                 }),
         );
 
-        for i in 2..NUM_VERTS {
-            let prev = vectors[i - 2];
-            let curr = vectors[i - 1];
-            let next = vec3(curr[0], curr[1], curr[2]) + lightning_step();
+        // reader.seek(10 * spec.sample_rate);
 
-            vectors.push(next);
-            // verts.push(Vertex {
-            //     color: CYAN,
-            //     position: next.into(),
-            // });
-            lines.extend(elbow(prev, curr, next).iter().map(|&v| vertex::Vertex {
-                color: RED,
-                position: v.into(),
-            }));
-        }
-        verts.extend(lines);
+        // let sample_count = (0.01 * spec.sample_rate as f32) as usize;
+
+        // let samples = reader
+        //     .samples::<i16>()
+        //     .take(sample_count)
+        //     .map(|x| x.unwrap() as f32 / i16::MAX as f32)
+        //     .collect::<Vec<_>>()
+        //     .chunks(2)
+        //     .map(|v| vertex::Vertex {
+        //         color: RED,
+        //         position: [v[0], v[1], 0.0],
+        //     })
+        //     .collect::<Vec<_>>();
+
+        // verts.extend(samples);
+
+        // let (channel_count, sampling_rate, data) = crate::sound::getNormalized("03 Blocks.wav");
+        // if channel_count == 2 {
+        //     let mut it = data.iter().skip(sampling_rate as usize);
+        //     let seconds = 1;
+        //     let sample_count = seconds * sampling_rate as u32;
+
+        //     verts.extend(
+        //         data.chunks(2)
+        //             .take(sample_count as usize)
+        //             .map(|c| vec3(c[0], c[1], 0.0))
+        //             .collect::<Vec<_>>()
+        //             .windows(3)
+        //             .flat_map(|w| elbow(w[0], w[1], w[2]))
+        //             .map(|v| vertex::Vertex {
+        //                 color: RED,
+        //                 position: v.into(),
+        //             }),
+        //     );
+        // }
+
+        // verts.extend(
+        //     (0..=NUM_VERTS)
+        //         .map(|i| {
+        //             let theta = 2.0 * PI * (i as f32 / NUM_VERTS as f32);
+        //             let x = CIRCLE_RADIUS * theta.cos();
+        //             let y = CIRCLE_RADIUS * theta.sin();
+        //             vec3(x, y, 0.0)
+        //         })
+        //         .collect::<Vec<_>>()
+        //         .windows(3)
+        //         .flat_map(|w| elbow(w[0], w[1], w[2]))
+        //         .map(|v| vertex::Vertex {
+        //             color: YELLOW,
+        //             position: v.into(),
+        //         }),
+        // );
+
+        // for i in 2..NUM_VERTS {
+        //     let prev = vectors[i - 2];
+        //     let curr = vectors[i - 1];
+        //     let next = vec3(curr[0], curr[1], curr[2]) + lightning_step();
+
+        //     vectors.push(next);
+        //     // verts.push(Vertex {
+        //     //     color: CYAN,
+        //     //     position: next.into(),
+        //     // });
+        //     lines.extend(elbow(prev, curr, next).iter().map(|&v| vertex::Vertex {
+        //         color: RED,
+        //         position: v.into(),
+        //     }));
+        // }
+        // verts.extend(lines);
         verts
     }
 
@@ -132,15 +203,17 @@ mod lightning {
         vec![curr + e1, curr - e1, curr - e2, curr + e2]
     }
 
-    pub(crate) fn calc_indices(verts: &Vec<vertex::Vertex>) -> Vec<u16> {
-        (0..verts.len() as u16)
-            .collect::<Vec<u16>>()
+    pub(crate) fn calc_indices(verts: &Vec<vertex::Vertex>) -> Vec<u32> {
+        (0..verts.len() as u32)
+            .collect::<Vec<u32>>()
             .try_into()
             .unwrap()
     }
 }
 
 struct State {
+    time: Instant,
+    time_delta: Duration,
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -155,8 +228,10 @@ struct State {
     use_complex: bool,
 
     diffuse_bind_group: wgpu::BindGroup,
-
     depth_texture: texture::Texture,
+
+    wav_streamer: WavStreamer,
+    rb: RingBuffer<[f32; 2]>,
 }
 
 impl State {
@@ -285,7 +360,16 @@ impl State {
 
         let use_complex = false;
 
+        let time = Instant::now();
+        let time_delta = Duration::new(0, 0);
+
+        let wav_streamer = WavStreamer::new("03 Blocks.wav");
+        const SAMPLES: usize = 2 * 44100;
+        let rb = RingBuffer::new(vec![[0.0, 0.0]; SAMPLES]);
+
         Self {
+            time,
+            time_delta,
             surface,
             device,
             queue,
@@ -299,6 +383,8 @@ impl State {
             use_complex,
             diffuse_bind_group,
             depth_texture,
+            wav_streamer,
+            rb,
         }
     }
 
@@ -341,6 +427,24 @@ impl State {
     }
 
     fn update(&mut self) {
+        let new_time = Instant::now();
+        self.time_delta = new_time.duration_since(self.time);
+        self.time = new_time;
+
+        let millis = self.time_delta.as_millis();
+
+        let verts = self
+            .wav_streamer
+            .take(millis as usize)
+            .map(|[x, y]| vertex::Vertex {
+                color: RED,
+                position: [x, y, 0.0],
+            })
+            .collect::<Vec<_>>();
+
+        self.queue
+            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&verts));
+
         // self.camera
         //     .controller
         //     .update_camera(&mut self.camera.camera);
@@ -395,7 +499,7 @@ impl State {
             render_pass.set_vertex_buffer(0, data.0.slice(..));
             // render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
-            render_pass.set_index_buffer(data.1.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_index_buffer(data.1.slice(..), wgpu::IndexFormat::Uint32);
 
             render_pass.draw_indexed(0..data.2, 0, 0..1 as _);
             // render_pass.draw(0..self.num_indices, 0..1)
