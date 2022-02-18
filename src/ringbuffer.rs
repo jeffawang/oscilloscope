@@ -5,7 +5,6 @@ pub struct RingBuffer<T> {
 
 impl<T: Copy> RingBuffer<T> {
     pub fn new(data: Vec<T>) -> Self {
-        let end = data.len() - 1;
         Self { data, start: 0 }
     }
 

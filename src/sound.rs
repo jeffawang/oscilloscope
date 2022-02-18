@@ -1,6 +1,4 @@
-use std::{fmt::Result, fs::File, path::Path};
-
-use hound::{WavIntoSamples, WavSamples};
+use std::{fs::File, path::Path};
 
 pub struct WavStreamer {
     spec: hound::WavSpec,
@@ -18,11 +16,6 @@ impl WavStreamer {
             samples: samples,
         };
     }
-}
-
-pub struct WavStreamIter<'a> {
-    values: &'a WavIntoSamples<File, i16>,
-    buf: [f32; 2],
 }
 
 impl Iterator for WavStreamer {
