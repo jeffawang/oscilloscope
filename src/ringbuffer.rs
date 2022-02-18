@@ -11,7 +11,7 @@ impl<T: Copy> RingBuffer<T> {
 
     pub fn push(&mut self, item: T) {
         self.data[self.start] = item;
-        self.start += 1;
+        self.start = (self.start + 1) % self.data.len();
     }
 
     pub fn iter(&mut self) -> Iter<T> {

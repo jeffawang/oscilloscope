@@ -97,7 +97,7 @@ mod lightning {
         // let mut lines = vec![];
         // vectors[1] = cgmath::vec3(0.0, 0.0, 0.0);
 
-        let stream = WavStreamer::new("03 Blocks.wav");
+        let stream = WavStreamer::new("music/03 Blocks.wav");
 
         let mut rb = RingBuffer::new(stream.take(SAMPLES).collect());
 
@@ -109,7 +109,7 @@ mod lightning {
                 .flat_map(|w| elbow(w[0], w[1], w[2]))
                 .map(|v| vertex::Vertex {
                     color: RED,
-                    position: v.into(),
+                    position: [0.0, 0.0, 0.0],
                 }),
         );
 
@@ -349,7 +349,7 @@ impl State {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&verts),
-            usage: wgpu::BufferUsages::VERTEX,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -433,9 +433,17 @@ impl State {
 
         let millis = self.time_delta.as_millis();
 
+        let wav_streamer = &mut self.wav_streamer;
+
+        let samples = (22.100 * millis as f64) as usize;
+
+        wav_streamer
+            .take(samples as usize)
+            .for_each(|v| self.rb.push(v));
+
         let verts = self
-            .wav_streamer
-            .take(millis as usize)
+            .rb
+            .iter()
             .map(|[x, y]| vertex::Vertex {
                 color: RED,
                 position: [x, y, 0.0],
@@ -444,6 +452,8 @@ impl State {
 
         self.queue
             .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&verts));
+
+        // self.queue.submit(command_buffers)
 
         // self.camera
         //     .controller
