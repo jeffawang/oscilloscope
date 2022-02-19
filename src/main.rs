@@ -4,10 +4,14 @@ mod ringbuffer;
 mod sound;
 mod texture;
 
-use std::time::{Duration, Instant};
+use std::{
+    iter::Map,
+    time::{Duration, Instant},
+};
 
 use bytemuck::{self};
 
+use itertools::Itertools;
 use lightning::RED;
 use ringbuffer::RingBuffer;
 use sound::WavStreamer;
@@ -71,12 +75,12 @@ mod lightning {
     const SAMPLES: usize = 2 * 44100;
 
     pub(crate) fn calc_verts() -> Vec<vertex::Vertex> {
-        let stream = WavStreamer::new("music/02 Lines.wav");
+        let mut stream = WavStreamer::new("music/02 Lines.wav");
 
-        let mut rb = RingBuffer::new(stream.take(SAMPLES).collect());
+        let mut rb = RingBuffer::new(stream.iter().take(SAMPLES).collect());
 
         rb.iter()
-            .map(|[x, y]| vec3(x, y, 0.0))
+            .map(|(x, y)| vec3(x, y, 0.0))
             .collect::<Vec<_>>()
             .windows(3)
             .flat_map(|w| elbow(w[0], w[1], w[2]))
@@ -130,7 +134,7 @@ struct State {
     depth_texture: texture::Texture,
 
     wav_streamer: WavStreamer,
-    rb: RingBuffer<[f32; 2]>,
+    rb: RingBuffer<(f32, f32)>,
 }
 
 impl State {
@@ -263,7 +267,7 @@ impl State {
 
         let wav_streamer = WavStreamer::new("music/03 Blocks.wav");
         const SAMPLES: usize = 2 * 44100;
-        let rb = RingBuffer::new(vec![[0.0, 0.0]; SAMPLES]);
+        let rb = RingBuffer::new(vec![(0.0, 0.0); SAMPLES]);
 
         Self {
             time,
@@ -330,18 +334,17 @@ impl State {
 
         let millis = self.time_delta.as_millis();
 
-        let wav_streamer = &mut self.wav_streamer;
-
         let samples = (22100/* * millis as f64 */) as usize;
 
-        wav_streamer
+        self.wav_streamer
+            .iter()
             .take(samples as usize)
             .for_each(|v| self.rb.push(v));
 
         let verts = self
             .rb
             .iter()
-            .map(|[x, y]| vertex::Vertex {
+            .map(|(x, y)| vertex::Vertex {
                 color: RED,
                 position: [x, y, 0.0],
             })
