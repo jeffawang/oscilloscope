@@ -5,15 +5,10 @@ mod ringbuffer;
 mod sound;
 mod texture;
 
-use std::{
-    iter::Map,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use bytemuck::{self};
 
-use itertools::Itertools;
-use lightning::RED;
 use ringbuffer::RingBuffer;
 use sound::WavStreamer;
 use wgpu::util::DeviceExt;
@@ -22,99 +17,6 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-
-mod vertex {
-    #[repr(C)]
-    #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-    pub(crate) struct Vertex {
-        pub(crate) position: [f32; 3],
-        pub(crate) color: [f32; 4],
-    }
-
-    impl Vertex {
-        pub(crate) fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-            wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &[
-                    wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x3,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                        shader_location: 1,
-                        format: wgpu::VertexFormat::Float32x4,
-                    },
-                ],
-            }
-        }
-    }
-}
-
-mod lightning {
-
-    use crate::ringbuffer::RingBuffer;
-    use crate::sound::WavStreamer;
-
-    use super::vertex;
-
-    use cgmath::vec3;
-    use cgmath::InnerSpace;
-
-    use cgmath::Vector3;
-    use rand::Rng;
-
-    pub(crate) const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
-
-    pub(crate) const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-    pub(crate) const YELLOW: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
-
-    pub(crate) const LINE_THICCNESS: f32 = 0.01;
-
-    const SAMPLES: usize = 2 * 44100;
-
-    pub(crate) fn calc_verts() -> Vec<vertex::Vertex> {
-        let mut stream = WavStreamer::new("music/02 Lines.wav");
-
-        let mut rb = RingBuffer::new(stream.iter().take(SAMPLES).collect());
-
-        rb.iter()
-            .map(|(x, y)| vec3(x, y, 0.0))
-            .collect::<Vec<_>>()
-            .windows(3)
-            .flat_map(|w| elbow(w[0], w[1], w[2]))
-            .map(|v| vertex::Vertex {
-                color: RED,
-                position: [0.0, 0.0, 0.0],
-            })
-            .collect()
-    }
-
-    pub(crate) fn elbow(
-        prev: Vector3<f32>,
-        curr: Vector3<f32>,
-        next: Vector3<f32>,
-    ) -> Vec<Vector3<f32>> {
-        let e1 = (prev - curr)
-            .normalize()
-            .cross(vec3(0.0, 0.0, 1.0))
-            .normalize_to(LINE_THICCNESS);
-        let e2 = (next - curr)
-            .normalize()
-            .cross(vec3(0.0, 0.0, 1.0))
-            .normalize_to(LINE_THICCNESS);
-        vec![curr + e1, curr - e1, curr - e2, curr + e2]
-    }
-
-    pub(crate) fn calc_indices(verts: &Vec<vertex::Vertex>) -> Vec<u32> {
-        (0..verts.len() as u32)
-            .collect::<Vec<u32>>()
-            .try_into()
-            .unwrap()
-    }
-}
 
 struct State {
     time: Instant,
@@ -205,7 +107,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[vertex::Vertex::desc()],
+                buffers: &[/*vertex::Vertex::desc()*/],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -245,19 +147,17 @@ impl State {
             multiview: None,
         });
 
-        let verts = lightning::calc_verts();
-        let indices = lightning::calc_indices(&verts);
-        let num_indices = indices.len() as u32;
+        let num_indices = 0; //indices.len() as u32;
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&verts),
+            contents: bytemuck::cast_slice(&[0.0] /*verts*/),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
+            contents: bytemuck::cast_slice(&[0.0] /*indices*/),
             usage: wgpu::BufferUsages::INDEX,
         });
 
@@ -342,17 +242,17 @@ impl State {
             .take(samples as usize)
             .for_each(|v| self.rb.push(v));
 
-        let verts = self
-            .rb
-            .iter()
-            .map(|(x, y)| vertex::Vertex {
-                color: RED,
-                position: [x, y, 0.0],
-            })
-            .collect::<Vec<_>>();
+        // let verts = self
+        //     .rb
+        //     .iter()
+        //     .map(|(x, y)| vertex::Vertex {
+        //         color: RED,
+        //         position: [x, y, 0.0],
+        //     })
+        //     .collect::<Vec<_>>();
 
-        self.queue
-            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&verts));
+        // self.queue
+        //     .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&verts));
 
         // self.queue.submit(command_buffers)
 
@@ -421,6 +321,8 @@ impl State {
 }
 
 fn main() {
+    blah::main::main();
+    return;
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();

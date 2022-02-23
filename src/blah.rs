@@ -1,6 +1,5 @@
 use std::{borrow::Cow, mem};
 
-use bytemuck::Zeroable;
 use itertools::Itertools;
 use wgpu::util::DeviceExt;
 
@@ -24,16 +23,22 @@ struct Oscilloscope {
 
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
-    // work_group_count: u32,
+    work_group_count: u32,
     frame_num: usize,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct OsciUniforms {}
+struct OsciUniforms {
+    blah: f32,
+}
 
 const NUM_PARTICLES: u32 = 1500;
-struct Particle {}
+const PARTICLES_PER_GROUP: u32 = 64;
+
+struct Particle {
+    blah: f32,
+}
 
 impl Oscilloscope {
     fn init(
@@ -42,7 +47,7 @@ impl Oscilloscope {
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
     ) -> Self {
-        let osci_param_data = OsciUniforms {};
+        let osci_param_data = OsciUniforms { blah: 0.0 };
         let osci_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Oscilloscope Parameter buffer"),
             contents: bytemuck::cast_slice(&[osci_param_data]),
@@ -81,7 +86,7 @@ impl Oscilloscope {
                         },
                         wgpu::BindGroupEntry {
                             binding: 2,
-                            resource: particle_buffers[i].as_entire_binding(),
+                            resource: particle_buffers[(i + 1) % 2].as_entire_binding(),
                         },
                     ],
                 })
@@ -95,15 +100,23 @@ impl Oscilloscope {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
 
+        let work_group_count =
+            ((NUM_PARTICLES as f32) / (PARTICLES_PER_GROUP as f32)).ceil() as u32;
+
         Self {
             compute_pipeline,
             render_pipeline,
             particle_bind_groups,
             particle_buffers,
             vertex_buffer,
+            work_group_count,
             frame_num: 0,
         }
     }
+
+    fn entrypoint() {}
+
+    fn render(&mut self) {}
 
     fn new_compute_pipeline(
         device: &wgpu::Device,
@@ -134,9 +147,10 @@ impl Oscilloscope {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new(
-                                (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
-                            ),
+                            min_binding_size: None,
+                            // min_binding_size: wgpu::BufferSize::new(
+                            //     (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
+                            // ),
                         },
                         count: None,
                     },
@@ -146,9 +160,10 @@ impl Oscilloscope {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new(
-                                (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
-                            ),
+                            min_binding_size: None,
+                            // min_binding_size: wgpu::BufferSize::new(
+                            //     (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
+                            // ),
                         },
                         count: None,
                     },
@@ -218,5 +233,90 @@ impl Oscilloscope {
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
         })
+    }
+}
+
+pub mod main {
+    use winit::{
+        event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+        event_loop::EventLoop,
+        window::{Window, WindowBuilder},
+    };
+
+    use super::Oscilloscope;
+
+    pub fn main() {
+        env_logger::init();
+        let event_loop = EventLoop::new();
+        let window = WindowBuilder::new().build(&event_loop).unwrap();
+
+        let oscilloscope = pollster::block_on(setup_oscilloscope(&event_loop, &window));
+
+        event_loop.run(move |event, _, control_flow| match event {
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if window_id == window.id() => match event {
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state,
+                            virtual_keycode: Some(VirtualKeyCode::Space),
+                            ..
+                        },
+                    ..
+                } => {
+                    println!("Space pressed");
+                }
+                _ => {}
+            },
+            Event::RedrawRequested(window_id) if window_id == window.id() => {
+                // TODO: update state
+                // TODO: render
+            }
+            Event::MainEventsCleared => {
+                window.request_redraw();
+            }
+            _ => {}
+        });
+    }
+
+    async fn setup_oscilloscope(event_loop: &EventLoop<()>, window: &Window) -> Oscilloscope {
+        let size = window.inner_size();
+        let instance = wgpu::Instance::new(wgpu::Backends::all());
+        let surface = unsafe { instance.create_surface(&window) };
+
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .unwrap();
+
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Device Descriptor"),
+                    features: wgpu::Features::POLYGON_MODE_LINE,
+                    limits: wgpu::Limits::default(),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface.get_preferred_format(&adapter).unwrap(),
+            width: size.width,
+            height: size.height,
+            present_mode: wgpu::PresentMode::Fifo,
+        };
+
+        surface.configure(&device, &config);
+
+        Oscilloscope::init(&config, &adapter, &device, &queue)
     }
 }
