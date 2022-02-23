@@ -1,3 +1,4 @@
+mod blah;
 mod camera;
 mod instancing;
 mod ringbuffer;
@@ -265,7 +266,7 @@ impl State {
         let time = Instant::now();
         let time_delta = Duration::new(0, 0);
 
-        let wav_streamer = WavStreamer::new("music/03 Blocks.wav");
+        let wav_streamer = WavStreamer::new("music/02 Lines.wav");
         const SAMPLES: usize = 2 * 44100;
         let rb = RingBuffer::new(vec![(0.0, 0.0); SAMPLES]);
 
