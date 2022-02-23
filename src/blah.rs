@@ -116,10 +116,10 @@ impl Oscilloscope {
         let render_pipeline = Self::new_render_pipeline(device, config);
         let vertex_buffer_data = [
             Vertex {
-                position: [-1.0, -1.0],
+                position: [-1.0, 0.0],
             },
             Vertex {
-                position: [1.0, -1.0],
+                position: [1.0, 0.0],
             },
             Vertex {
                 position: [-1.0, 1.0],
