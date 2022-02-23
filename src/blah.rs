@@ -316,8 +316,8 @@ impl Oscilloscope {
                 cull_mode: None,
                 // Setting this to anything other than Fill
                 // requires Features::NON_FILL_POLYGON_MODE
-                // polygon_mode: wgpu::PolygonMode::Line,
                 polygon_mode: wgpu::PolygonMode::Line,
+                // polygon_mode: wgpu::PolygonMode::Line,
                 // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
                 // Requires Features::CONSERVATIVE_RASTERIZATION

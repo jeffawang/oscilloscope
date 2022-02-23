@@ -19,7 +19,8 @@ fn main_vs(
     v: Vertex,
     [[builtin(vertex_index)]] vertex_index: u32,
 ) -> [[builtin(position)]] vec4<f32> {
-    return vec4<f32>(line.start + v.pos, 0.0, 1.0);
+    var offset = vec2<f32>(v.pos.x * 0.1, v.pos.y * line.len);
+    return vec4<f32>(line.start * 0.5 + offset, 0.0, 1.0);
 }
 
 [[stage(fragment)]]
