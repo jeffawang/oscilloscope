@@ -24,7 +24,7 @@ fn main([[builtin(global_invocation_id)]] global_invocation_id: vec3<u32>) {
   var before: Line = linesSrc.lines[index];
 
   linesDst.lines[index] = Line(
-      before.start + vec2<f32>(0.0001, 0.0001),
+      before.start,// + vec2<f32>(0.0001, 0.0001),
       before.len,
       before.angle,
   );

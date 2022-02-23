@@ -68,9 +68,9 @@ impl Oscilloscope {
         let (compute_pipeline, compute_bind_group_layout) = Self::new_compute_pipeline(device);
         let initial_particle_data = (0..NUM_PARTICLES)
             .map(|i| Particle {
-                pos: [i as f32, i as f32],
-                len: 0.5,
-                angle: 0.0,
+                pos: [-1.0 + i as f32 / 10.0, -1.0 + i as f32 / 10.0],
+                len: 0.15,
+                angle: i as f32,
             })
             .collect_vec();
         let particle_buffers = (0..2)
