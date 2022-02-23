@@ -7,8 +7,6 @@ use wgpu::util::DeviceExt;
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     position: [f32; 2],
-    // normal: [f32; 3],
-    // color: [f32; 4],
 }
 
 pub struct Line {
@@ -32,7 +30,7 @@ struct Oscilloscope {
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct OsciUniforms {
-    blah: f32,
+    frame: u32,
 }
 
 const NUM_PARTICLES: u32 = 10;
@@ -58,15 +56,7 @@ impl Oscilloscope {
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
     ) -> Self {
-        let osci_param_data = OsciUniforms { blah: 0.0 };
-        let osci_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Oscilloscope Parameter buffer"),
-            contents: bytemuck::cast_slice(&[osci_param_data]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        // Compute pipeline setup
-        let (compute_pipeline, compute_bind_group_layout) = Self::new_compute_pipeline(device);
+        let osci_uniforms = OsciUniforms { frame: 0 };
         let initial_particle_data = (0..NUM_PARTICLES)
             .map(|i| {
                 let theta = 2.0 * 3.14159 * (i as f32 / NUM_PARTICLES as f32);
@@ -77,40 +67,16 @@ impl Oscilloscope {
                 }
             })
             .collect_vec();
-        let particle_buffers = (0..2)
-            .map(|i| {
-                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&format!("Particle Buffer {}", i)),
-                    contents: bytemuck::cast_slice(&initial_particle_data),
-                    usage: wgpu::BufferUsages::VERTEX
-                        | wgpu::BufferUsages::STORAGE
-                        | wgpu::BufferUsages::COPY_DST,
-                })
-            })
-            .collect_vec();
 
-        let particle_bind_groups = (0..2)
-            .map(|i| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&format!("Bind Group {}", i)),
-                    layout: &compute_bind_group_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: osci_param_buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: particle_buffers[i].as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: particle_buffers[1 - i].as_entire_binding(),
-                        },
-                    ],
-                })
-            })
-            .collect();
+        // Compute pipeline setup
+        let (compute_pipeline, compute_bind_group_layout) = Self::new_compute_pipeline(device);
+
+        let (particle_buffers, particle_bind_groups) = Self::particle_buffers_and_bind_groups(
+            device,
+            &compute_bind_group_layout,
+            &osci_uniforms,
+            &initial_particle_data,
+        );
 
         // Rendering pipeline setup
         let render_pipeline = Self::new_render_pipeline(device, config);
@@ -272,6 +238,53 @@ impl Oscilloscope {
             }),
             compute_bind_group_layout,
         )
+    }
+
+    fn particle_buffers_and_bind_groups(
+        device: &wgpu::Device,
+        compute_bind_group_layout: &wgpu::BindGroupLayout,
+        osci_uniforms: &OsciUniforms,
+        initial_particle_data: &Vec<Particle>,
+    ) -> (Vec<wgpu::Buffer>, Vec<wgpu::BindGroup>) {
+        let osci_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Oscilloscope Parameter buffer"),
+            contents: bytemuck::cast_slice(&[*osci_uniforms]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let particle_buffers = (0..2)
+            .map(|i| {
+                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some(&format!("Particle Buffer {}", i)),
+                    contents: bytemuck::cast_slice(&initial_particle_data),
+                    usage: wgpu::BufferUsages::VERTEX
+                        | wgpu::BufferUsages::STORAGE
+                        | wgpu::BufferUsages::COPY_DST,
+                })
+            })
+            .collect_vec();
+        let particle_bind_groups = (0..2)
+            .map(|i| {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some(&format!("Bind Group {}", i)),
+                    layout: &compute_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: osci_param_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: particle_buffers[i].as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: particle_buffers[1 - i].as_entire_binding(),
+                        },
+                    ],
+                })
+            })
+            .collect();
+        (particle_buffers, particle_bind_groups)
     }
 
     fn new_render_pipeline(
