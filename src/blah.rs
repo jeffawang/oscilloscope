@@ -36,9 +36,18 @@ struct OsciUniforms {
 const NUM_PARTICLES: u32 = 1500;
 const PARTICLES_PER_GROUP: u32 = 64;
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct Particle {
-    blah: f32,
+    pos: [f32; 2],
+    len: f32,
+    angle: f32,
 }
+/*
+   [[location(0)]] pos: vec2<f32>,
+   [[location(1)]] len: f32,
+   [[location(2)]] angle: f32,
+*/
 
 impl Oscilloscope {
     fn init(
@@ -55,9 +64,14 @@ impl Oscilloscope {
         });
 
         let (compute_pipeline, compute_bind_group_layout) = Self::new_compute_pipeline(device);
-        let render_pipeline = Self::new_render_pipeline(device, config);
-
-        let initial_particle_data = vec![0.0f32]; // TODO: make this more of a thing.
+        let initial_particle_data = vec![
+            Particle {
+                angle: 0.0,
+                len: 0.2,
+                pos: [0.0, 0.0],
+            };
+            NUM_PARTICLES as usize
+        ];
         let particle_buffers = (0..2)
             .map(|i| {
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -93,6 +107,7 @@ impl Oscilloscope {
             })
             .collect();
 
+        let render_pipeline = Self::new_render_pipeline(device, config);
         let vertex_buffer_data = [-1.0f32, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -114,9 +129,52 @@ impl Oscilloscope {
         }
     }
 
-    fn entrypoint() {}
+    fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let color_attachments = [wgpu::RenderPassColorAttachment {
+            view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: true,
+            },
+        }];
 
-    fn render(&mut self) {}
+        let render_pass_descriptor = wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: None,
+        };
+
+        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Command Encoder"),
+        });
+
+        command_encoder.push_debug_group("compute lines");
+        {
+            // compute pass
+            let mut cpass = command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Compute Pass"),
+            });
+            cpass.set_pipeline(&self.compute_pipeline);
+            cpass.set_bind_group(0, &self.particle_bind_groups[self.frame_num % 2], &[]);
+            cpass.dispatch(self.work_group_count, 1, 1);
+        }
+        command_encoder.pop_debug_group();
+
+        command_encoder.push_debug_group("render stuff");
+        {
+            let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
+            rpass.set_pipeline(&self.render_pipeline);
+            rpass.set_vertex_buffer(0, self.particle_buffers[(self.frame_num + 1) % 2].slice(..));
+            rpass.set_vertex_buffer(1, self.vertex_buffer.slice(..));
+            rpass.draw(0..4, 0..NUM_PARTICLES);
+        }
+        command_encoder.pop_debug_group();
+
+        self.frame_num += 1;
+
+        queue.submit(Some(command_encoder.finish()));
+    }
 
     fn new_compute_pipeline(
         device: &wgpu::Device,
@@ -214,7 +272,7 @@ impl Oscilloscope {
                     wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<Line>() as _, // TODO: revisit this...
                         step_mode: wgpu::VertexStepMode::Instance,
-                        attributes: &wgpu::vertex_attr_array![0 => Float32, 1 => Float32],
+                        attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32, 2 => Float32],
                     },
                     wgpu::VertexBufferLayout {
                         array_stride: 2 * 4, // TODO: set this array stride...
@@ -238,8 +296,8 @@ impl Oscilloscope {
 
 pub mod main {
     use winit::{
-        event::{Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-        event_loop::EventLoop,
+        event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+        event_loop::{ControlFlow, EventLoop},
         window::{Window, WindowBuilder},
     };
 
@@ -250,13 +308,32 @@ pub mod main {
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-        let oscilloscope = pollster::block_on(setup_oscilloscope(&event_loop, &window));
+        let (mut oscilloscope, surface, config, device, queue) =
+            pollster::block_on(setup_oscilloscope(&event_loop, &window));
 
         event_loop.run(move |event, _, control_flow| match event {
             Event::WindowEvent {
                 ref event,
                 window_id,
             } if window_id == window.id() => match event {
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        },
+                    ..
+                } => *control_flow = ControlFlow::Exit,
+                WindowEvent::Resized(physical_size) => {
+                    // state.resize(*physical_size);
+                }
+                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                    // new_inner_size is &&mut so we have to dereference it twice
+                    // state.resize(**new_inner_size);
+                }
+
                 WindowEvent::KeyboardInput {
                     input:
                         KeyboardInput {
@@ -273,6 +350,20 @@ pub mod main {
             Event::RedrawRequested(window_id) if window_id == window.id() => {
                 // TODO: update state
                 // TODO: render
+                let frame = match surface.get_current_texture() {
+                    Ok(frame) => frame,
+                    Err(_) => {
+                        surface.configure(&device, &config);
+                        surface
+                            .get_current_texture()
+                            .expect("Failed to acquire next surface texture!")
+                    }
+                };
+                let view = frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+
+                oscilloscope.render(&view, &device, &queue);
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
@@ -281,7 +372,16 @@ pub mod main {
         });
     }
 
-    async fn setup_oscilloscope(event_loop: &EventLoop<()>, window: &Window) -> Oscilloscope {
+    async fn setup_oscilloscope(
+        event_loop: &EventLoop<()>,
+        window: &Window,
+    ) -> (
+        Oscilloscope,
+        wgpu::Surface,
+        wgpu::SurfaceConfiguration,
+        wgpu::Device,
+        wgpu::Queue,
+    ) {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::Backends::all());
         let surface = unsafe { instance.create_surface(&window) };
@@ -317,6 +417,25 @@ pub mod main {
 
         surface.configure(&device, &config);
 
-        Oscilloscope::init(&config, &adapter, &device, &queue)
+        let frame = match surface.get_current_texture() {
+            Ok(frame) => frame,
+            Err(_) => {
+                surface.configure(&device, &config);
+                surface
+                    .get_current_texture()
+                    .expect("Failed to acquire next surface texture!")
+            }
+        };
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        (
+            Oscilloscope::init(&config, &adapter, &device, &queue),
+            surface,
+            config,
+            device,
+            queue,
+        )
     }
 }
