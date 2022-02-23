@@ -35,7 +35,7 @@ struct OsciUniforms {
     blah: f32,
 }
 
-const NUM_PARTICLES: u32 = 1500;
+const NUM_PARTICLES: u32 = 10;
 const PARTICLES_PER_GROUP: u32 = 64;
 
 #[repr(C)]
@@ -65,12 +65,16 @@ impl Oscilloscope {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Compute pipeline setup
         let (compute_pipeline, compute_bind_group_layout) = Self::new_compute_pipeline(device);
         let initial_particle_data = (0..NUM_PARTICLES)
-            .map(|i| Particle {
-                pos: [-1.0 + i as f32 / 10.0, -1.0 + i as f32 / 10.0],
-                len: 0.15,
-                angle: i as f32,
+            .map(|i| {
+                let theta = 2.0 * 3.14159 * (i as f32 / NUM_PARTICLES as f32);
+                Particle {
+                    pos: [theta.cos(), theta.sin()],
+                    len: 0.15,
+                    angle: i as f32,
+                }
             })
             .collect_vec();
         let particle_buffers = (0..2)
@@ -108,6 +112,7 @@ impl Oscilloscope {
             })
             .collect();
 
+        // Rendering pipeline setup
         let render_pipeline = Self::new_render_pipeline(device, config);
         let vertex_buffer_data = [
             Vertex {
