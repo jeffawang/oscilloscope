@@ -149,7 +149,7 @@ impl Oscilloscope {
         });
 
         // Compute pass
-        // self.cpass(&mut command_encoder);
+        self.cpass(&mut command_encoder);
 
         // Render pass
         self.rpass(&mut command_encoder, view);

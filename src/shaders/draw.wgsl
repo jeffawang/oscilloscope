@@ -1,12 +1,25 @@
+// Vertex and Fragment shader to draw lines.
+
+// From compute shader
+struct Line {
+    [[location(0)]] start: vec2<f32>;
+    [[location(1)]] len: f32;
+    [[location(2)]] angle: f32;
+};
+
+// From vertex buffer (constant, since we are instanced)
+struct Vertex {
+    [[location(3)]] pos: vec2<f32>;
+};
+
+
 [[stage(vertex)]]
 fn main_vs(
-    [[location(0)]] start: vec2<f32>,
-    [[location(1)]] len: f32,
-    [[location(2)]] angle: f32,
-    [[location(3)]] vpos: vec2<f32>,
+    line: Line,
+    v: Vertex,
     [[builtin(vertex_index)]] vertex_index: u32,
 ) -> [[builtin(position)]] vec4<f32> {
-    return vec4<f32>(vpos, 0.0, 1.0);
+    return vec4<f32>(line.start + v.pos, 0.0, 1.0);
 }
 
 [[stage(fragment)]]
