@@ -3,10 +3,12 @@ use std::{borrow::Cow, mem};
 use itertools::Itertools;
 use wgpu::util::DeviceExt;
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     position: [f32; 2],
-    normal: [f32; 3],
-    color: [f32; 4],
+    // normal: [f32; 3],
+    // color: [f32; 4],
 }
 
 pub struct Line {
@@ -64,14 +66,13 @@ impl Oscilloscope {
         });
 
         let (compute_pipeline, compute_bind_group_layout) = Self::new_compute_pipeline(device);
-        let initial_particle_data = vec![
-            Particle {
+        let initial_particle_data = (0..NUM_PARTICLES)
+            .map(|i| Particle {
+                pos: [i as f32, i as f32],
+                len: 0.5,
                 angle: 0.0,
-                len: 0.2,
-                pos: [0.0, 0.0],
-            };
-            NUM_PARTICLES as usize
-        ];
+            })
+            .collect_vec();
         let particle_buffers = (0..2)
             .map(|i| {
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -108,7 +109,20 @@ impl Oscilloscope {
             .collect();
 
         let render_pipeline = Self::new_render_pipeline(device, config);
-        let vertex_buffer_data = [-1.0f32, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
+        let vertex_buffer_data = [
+            Vertex {
+                position: [-1.0, -1.0],
+            },
+            Vertex {
+                position: [1.0, -1.0],
+            },
+            Vertex {
+                position: [-1.0, 1.0],
+            },
+            Vertex {
+                position: [1.0, 1.0],
+            },
+        ];
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::bytes_of(&vertex_buffer_data),
@@ -135,7 +149,7 @@ impl Oscilloscope {
         });
 
         // Compute pass
-        self.cpass(&mut command_encoder);
+        // self.cpass(&mut command_encoder);
 
         // Render pass
         self.rpass(&mut command_encoder, view);
@@ -214,10 +228,10 @@ impl Oscilloscope {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
-                            min_binding_size: None,
-                            // min_binding_size: wgpu::BufferSize::new(
-                            //     (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
-                            // ),
+                            // min_binding_size: None,
+                            min_binding_size: wgpu::BufferSize::new(
+                                (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
+                            ),
                         },
                         count: None,
                     },
@@ -227,10 +241,10 @@ impl Oscilloscope {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
-                            min_binding_size: None,
-                            // min_binding_size: wgpu::BufferSize::new(
-                            //     (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
-                            // ),
+                            // min_binding_size: None,
+                            min_binding_size: wgpu::BufferSize::new(
+                                (NUM_PARTICLES * mem::size_of::<Particle>() as u32) as _,
+                            ),
                         },
                         count: None,
                     },
@@ -284,9 +298,9 @@ impl Oscilloscope {
                         attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32, 2 => Float32],
                     },
                     wgpu::VertexBufferLayout {
-                        array_stride: 2 * 4, // TODO: set this array stride...
+                        array_stride: std::mem::size_of::<Vertex>() as _, // TODO: set this array stride...
                         step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![2 => Float32x2],
+                        attributes: &wgpu::vertex_attr_array![3 => Float32x2],
                     },
                 ],
             },
@@ -295,7 +309,20 @@ impl Oscilloscope {
                 entry_point: "main_fs",
                 targets: &[config.format.into()],
             }),
-            primitive: wgpu::PrimitiveState::default(),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                // Setting this to anything other than Fill
+                // requires Features::NON_FILL_POLYGON_MODE
+                // polygon_mode: wgpu::PolygonMode::Line,
+                polygon_mode: wgpu::PolygonMode::Line,
+                // Requires Features::DEPTH_CLIP_CONTROL
+                unclipped_depth: false,
+                // Requires Features::CONSERVATIVE_RASTERIZATION
+                conservative: false,
+            },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
@@ -373,6 +400,7 @@ pub mod main {
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 oscilloscope.render(&view, &device, &queue);
+                frame.present();
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
