@@ -362,7 +362,7 @@ pub mod main {
         let event_loop = EventLoop::new();
         let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-        let (mut oscilloscope, surface, config, device, queue) =
+        let (mut oscilloscope, surface, mut config, device, queue) =
             pollster::block_on(setup_oscilloscope(&event_loop, &window));
 
         event_loop.run(move |event, _, control_flow| match event {
@@ -382,6 +382,9 @@ pub mod main {
                 } => *control_flow = ControlFlow::Exit,
                 WindowEvent::Resized(physical_size) => {
                     // state.resize(*physical_size);
+                    config.width = physical_size.width;
+                    config.height = physical_size.height;
+                    surface.configure(&device, &config);
                 }
                 WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                     // new_inner_size is &&mut so we have to dereference it twice
