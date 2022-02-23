@@ -100,7 +100,7 @@ impl Oscilloscope {
                         },
                         wgpu::BindGroupEntry {
                             binding: 2,
-                            resource: particle_buffers[(i + 1) % 2].as_entire_binding(),
+                            resource: particle_buffers[1 - i].as_entire_binding(),
                         },
                     ],
                 })
@@ -130,6 +130,36 @@ impl Oscilloscope {
     }
 
     fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Command Encoder"),
+        });
+
+        // Compute pass
+        self.cpass(&mut command_encoder);
+
+        // Render pass
+        self.rpass(&mut command_encoder, view);
+
+        self.frame_num += 1;
+
+        queue.submit(Some(command_encoder.finish()));
+    }
+
+    fn cpass(&mut self, command_encoder: &mut wgpu::CommandEncoder) {
+        command_encoder.push_debug_group("compute lines");
+        {
+            // compute pass
+            let mut cpass = command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Compute Pass"),
+            });
+            cpass.set_pipeline(&self.compute_pipeline);
+            cpass.set_bind_group(0, &self.particle_bind_groups[self.frame_num % 2], &[]);
+            cpass.dispatch(self.work_group_count, 1, 1);
+        }
+        command_encoder.pop_debug_group();
+    }
+
+    fn rpass(&self, command_encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let color_attachments = [wgpu::RenderPassColorAttachment {
             view,
             resolve_target: None,
@@ -144,23 +174,6 @@ impl Oscilloscope {
             color_attachments: &color_attachments,
             depth_stencil_attachment: None,
         };
-
-        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Command Encoder"),
-        });
-
-        command_encoder.push_debug_group("compute lines");
-        {
-            // compute pass
-            let mut cpass = command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: Some("Compute Pass"),
-            });
-            cpass.set_pipeline(&self.compute_pipeline);
-            cpass.set_bind_group(0, &self.particle_bind_groups[self.frame_num % 2], &[]);
-            cpass.dispatch(self.work_group_count, 1, 1);
-        }
-        command_encoder.pop_debug_group();
-
         command_encoder.push_debug_group("render stuff");
         {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
@@ -170,10 +183,6 @@ impl Oscilloscope {
             rpass.draw(0..4, 0..NUM_PARTICLES);
         }
         command_encoder.pop_debug_group();
-
-        self.frame_num += 1;
-
-        queue.submit(Some(command_encoder.finish()));
     }
 
     fn new_compute_pipeline(
