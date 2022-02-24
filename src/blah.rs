@@ -1,4 +1,4 @@
-use std::{borrow::Cow, mem};
+use std::{borrow::Cow, mem, num::NonZeroU32};
 
 use itertools::Itertools;
 use wgpu::util::DeviceExt;
@@ -24,7 +24,10 @@ struct Oscilloscope {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     work_group_count: u32,
+    texture: wgpu::Texture,
     frame_num: usize,
+    blit_pipeline: wgpu::RenderPipeline,
+    blit_bind_group: wgpu::BindGroup,
 }
 
 #[repr(C)]
@@ -103,6 +106,26 @@ impl Oscilloscope {
         let work_group_count =
             ((NUM_PARTICLES as f32) / (PARTICLES_PER_GROUP as f32)).ceil() as u32;
 
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Render Texture"),
+            size: wgpu::Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
+        });
+
+        // Blit pipeline setup
+        let blit_pipeline = Self::new_blit_pipeline(device, config);
+        let blit_bind_group = Self::blit_bind_group(&blit_pipeline, device, &texture);
+
         Self {
             compute_pipeline,
             render_pipeline,
@@ -110,11 +133,21 @@ impl Oscilloscope {
             particle_buffers,
             vertex_buffer,
             work_group_count,
+            blit_pipeline,
+            blit_bind_group,
+            texture,
             frame_num: 0,
         }
     }
 
-    fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
+    fn render(
+        &mut self,
+        view: &wgpu::TextureView,
+        config: &wgpu::SurfaceConfiguration,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        screen_texture: &wgpu::Texture,
+    ) {
         let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Command Encoder"),
         });
@@ -123,7 +156,16 @@ impl Oscilloscope {
         self.cpass(&mut command_encoder);
 
         // Render pass
-        self.rpass(&mut command_encoder, view);
+        self.rpass(
+            &mut command_encoder,
+            // view
+            &self
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+        );
+
+        // Blit pass
+        self.bpass(&mut command_encoder, view);
 
         self.frame_num += 1;
 
@@ -146,6 +188,7 @@ impl Oscilloscope {
 
     fn rpass(&self, command_encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let color_attachments = [wgpu::RenderPassColorAttachment {
+            // view,
             view,
             resolve_target: None,
             ops: wgpu::Operations {
@@ -159,6 +202,7 @@ impl Oscilloscope {
             color_attachments: &color_attachments,
             depth_stencil_attachment: None,
         };
+
         command_encoder.push_debug_group("render stuff");
         {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
@@ -166,6 +210,33 @@ impl Oscilloscope {
             rpass.set_vertex_buffer(0, self.particle_buffers[(self.frame_num + 1) % 2].slice(..));
             rpass.set_vertex_buffer(1, self.vertex_buffer.slice(..));
             rpass.draw(0..4, 0..NUM_PARTICLES);
+        }
+        command_encoder.pop_debug_group();
+    }
+
+    fn bpass(&self, command_encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
+        let color_attachments = [wgpu::RenderPassColorAttachment {
+            // view,
+            view,
+            resolve_target: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: true,
+            },
+        }];
+
+        let render_pass_descriptor = wgpu::RenderPassDescriptor {
+            label: Some("Blit Pass"),
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: None,
+        };
+
+        command_encoder.push_debug_group("blit to screen");
+        {
+            let mut bpass = command_encoder.begin_render_pass(&render_pass_descriptor);
+            bpass.set_pipeline(&self.blit_pipeline);
+            bpass.set_bind_group(0, &self.blit_bind_group, &[]);
+            bpass.draw(0..4, 0..NUM_PARTICLES);
         }
         command_encoder.pop_debug_group();
     }
@@ -334,7 +405,7 @@ impl Oscilloscope {
                 cull_mode: None,
                 // Setting this to anything other than Fill
                 // requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Line,
+                polygon_mode: wgpu::PolygonMode::Fill,
                 // polygon_mode: wgpu::PolygonMode::Line,
                 // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
@@ -345,6 +416,81 @@ impl Oscilloscope {
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
         })
+    }
+
+    fn new_blit_pipeline(
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+    ) -> wgpu::RenderPipeline {
+        let blit_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shaders/blit.wgsl"))),
+        });
+
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Blit Pipeline"),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &blit_shader,
+                entry_point: "vs_main",
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &blit_shader,
+                entry_point: "fs_main",
+                targets: &[wgpu::TextureFormat::Bgra8UnormSrgb.into()],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        })
+    }
+
+    fn blit_bind_group(
+        pipeline: &wgpu::RenderPipeline,
+        device: &wgpu::Device,
+        texture: &wgpu::Texture,
+    ) -> wgpu::BindGroup {
+        let bind_group_layout = pipeline.get_bind_group_layout(0);
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Blit"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("Blit View"),
+            format: None,
+            dimension: None,
+            aspect: wgpu::TextureAspect::All,
+            base_mip_level: 0,
+            mip_level_count: NonZeroU32::new(1),
+            base_array_layer: 0,
+            array_layer_count: None,
+        });
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Blit Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+        bind_group
     }
 }
 
@@ -416,11 +562,10 @@ pub mod main {
                             .expect("Failed to acquire next surface texture!")
                     }
                 };
-                let view = frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
+                let dst = &frame.texture;
+                let view = dst.create_view(&wgpu::TextureViewDescriptor::default());
 
-                oscilloscope.render(&view, &device, &queue);
+                oscilloscope.render(&view, &config, &device, &queue, dst);
                 frame.present();
             }
             Event::MainEventsCleared => {
