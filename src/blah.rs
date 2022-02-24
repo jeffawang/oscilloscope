@@ -610,16 +610,6 @@ pub mod main {
 
         surface.configure(&device, &config);
 
-        let frame = match surface.get_current_texture() {
-            Ok(frame) => frame,
-            Err(_) => {
-                surface.configure(&device, &config);
-                surface
-                    .get_current_texture()
-                    .expect("Failed to acquire next surface texture!")
-            }
-        };
-
         (
             Oscilloscope::init(&config, &adapter, &device, &queue),
             surface,
