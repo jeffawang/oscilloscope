@@ -123,7 +123,7 @@ impl Oscilloscope {
         });
 
         // Blit pipeline setup
-        let blit_pipeline = Self::new_blit_pipeline(device, config);
+        let blit_pipeline = Self::new_blit_pipeline(device);
         let blit_bind_group = Self::blit_bind_group(&blit_pipeline, device, &texture);
 
         Self {
@@ -418,10 +418,7 @@ impl Oscilloscope {
         })
     }
 
-    fn new_blit_pipeline(
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-    ) -> wgpu::RenderPipeline {
+    fn new_blit_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
         let blit_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shaders/blit.wgsl"))),
