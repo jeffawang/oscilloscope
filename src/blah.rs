@@ -140,14 +140,7 @@ impl Oscilloscope {
         }
     }
 
-    fn render(
-        &mut self,
-        view: &wgpu::TextureView,
-        config: &wgpu::SurfaceConfiguration,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        screen_texture: &wgpu::Texture,
-    ) {
+    fn render(&mut self, view: &wgpu::TextureView, device: &wgpu::Device, queue: &wgpu::Queue) {
         let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Command Encoder"),
         });
@@ -562,7 +555,7 @@ pub mod main {
                 let dst = &frame.texture;
                 let view = dst.create_view(&wgpu::TextureViewDescriptor::default());
 
-                oscilloscope.render(&view, &config, &device, &queue, dst);
+                oscilloscope.render(&view, &device, &queue);
                 frame.present();
             }
             Event::MainEventsCleared => {
