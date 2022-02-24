@@ -619,9 +619,6 @@ pub mod main {
                     .expect("Failed to acquire next surface texture!")
             }
         };
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
 
         (
             Oscilloscope::init(&config, &adapter, &device, &queue),
