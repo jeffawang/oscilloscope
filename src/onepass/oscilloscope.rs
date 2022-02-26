@@ -36,10 +36,10 @@ impl Oscilloscope {
 
     fn new_instance_buffer(wgpu_resources: &WgpuResources) -> wgpu::Buffer {
         let data = [
-            Vertex([1.0, 0.0]),
-            Vertex([0.1, 0.1]),
-            Vertex([0.0, 0.0]),
-            Vertex([0.0, 1.0]),
+            Vertex([-0.5, -0.5]),
+            Vertex([0.1, -0.3]),
+            Vertex([0.3, 0.3]),
+            Vertex([-0.3, 0.6]),
         ];
         wgpu_resources
             .device
@@ -68,7 +68,7 @@ impl Oscilloscope {
             buffers: &[wgpu::VertexBufferLayout {
                 array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                 step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &wgpu::vertex_attr_array![0 => Float32x2],
+                attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
             }], // example: blah.rs:381
         };
 

@@ -5,7 +5,8 @@ struct VertexOutput {
 
 [[stage(vertex)]]
 fn main_vs(
-    [[location(0)]] inst_pos: vec2<f32>,
+    [[location(0)]] curr: vec2<f32>,
+    [[location(1)]] next: vec2<f32>,
     [[builtin(vertex_index)]] vertex_index: u32
 ) -> VertexOutput {
     //  v | bin(v) | tx | ty
@@ -25,8 +26,13 @@ fn main_vs(
     var r = f32(~(tx | ty));
     var g = y;
     var b = x;
+
+    var pos = curr + vec2<f32>(x,y);
+
+    pos = (1.0-y) * curr + y * next;
+
     return VertexOutput(
-        vec4<f32>(x, y, 0.0, 1.0),
+        vec4<f32>(pos, 0.0, 1.0),
         vec4<f32>(r, g, b,   1.0)
     );
 }
