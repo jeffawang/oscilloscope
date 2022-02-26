@@ -1,13 +1,10 @@
-use std::{borrow::Cow, time::Instant};
+use std::borrow::Cow;
 
 use bytemuck::{Pod, Zeroable};
+
 use wgpu::util::DeviceExt;
 
-use super::{wgpu_resources::WgpuResources, Shaderer};
-
-struct Uniforms {
-    time: Instant,
-}
+use super::{state, wgpu_resources::WgpuResources, Shaderer};
 
 pub struct Oscilloscope {
     pub wgpu_resources: WgpuResources,
@@ -15,7 +12,7 @@ pub struct Oscilloscope {
     render_pipeline: wgpu::RenderPipeline,
     instance_buffer: wgpu::Buffer,
 
-    uniforms: Uniforms,
+    state: state::State,
 }
 
 #[repr(C)]
@@ -24,13 +21,12 @@ struct Vertex([f32; 2]);
 
 impl Oscilloscope {
     fn new(wgpu_resources: WgpuResources) -> Self {
+        let state = state::State::new(&wgpu_resources);
         Self {
-            render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources),
+            render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources, &state),
             instance_buffer: Oscilloscope::new_instance_buffer(&wgpu_resources),
             wgpu_resources,
-            uniforms: Uniforms {
-                time: Instant::now(),
-            },
+            state,
         }
     }
 
@@ -51,7 +47,10 @@ impl Oscilloscope {
             })
     }
 
-    fn new_render_pipeline(wgpu_resources: &WgpuResources) -> wgpu::RenderPipeline {
+    fn new_render_pipeline(
+        wgpu_resources: &WgpuResources,
+        state: &state::State,
+    ) -> wgpu::RenderPipeline {
         let WgpuResources { device, config, .. } = wgpu_resources;
         let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -59,7 +58,7 @@ impl Oscilloscope {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
-            bind_group_layouts: &[], // TODO: use these maybe??
+            bind_group_layouts: &[&state.uniform_bind_group_layout], // TODO: use these maybe??
             push_constant_ranges: &[],
         });
 
@@ -119,12 +118,10 @@ impl Oscilloscope {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_vertex_buffer(0, self.instance_buffer.slice(..)); // TODO: fill in this buffer
+            rpass.set_bind_group(0, &self.state.uniform_bind_group, &[]);
             rpass.draw(0..4, 0..3); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
         }
         command_encoder.pop_debug_group();
-    }
-    pub fn update(&mut self) {
-        self.uniforms.time = Instant::now();
     }
 }
 
@@ -133,12 +130,18 @@ impl Shaderer for Oscilloscope {
         Oscilloscope::new(wgpu_resources)
     }
 
+    fn update(&mut self) {
+        self.state.update();
+        self.state.write_queue(&self.wgpu_resources.queue);
+    }
+
     fn render(&self, view: &wgpu::TextureView) {
         let WgpuResources { device, queue, .. } = &self.wgpu_resources;
 
         let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Command Encoder"),
         });
+
         self.rpass(&mut command_encoder, view);
         queue.submit(Some(command_encoder.finish()));
     }

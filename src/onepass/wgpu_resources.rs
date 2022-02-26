@@ -1,3 +1,6 @@
+use std::{marker::PhantomData, mem};
+
+use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 /// WgpuResources holds the information needed to set up shader pipeline and whatnot.
@@ -60,5 +63,65 @@ impl WgpuResources {
                     .expect("Failed to acquire next surface texture!")
             }
         }
+    }
+}
+
+pub struct UniformBinder<'a, T> {
+    uniform_type: PhantomData<T>,
+    wgpu_resources: &'a WgpuResources,
+}
+
+impl<'a, T> UniformBinder<'a, T> {
+    pub fn new(wgpu_resources: &'a WgpuResources) -> Self {
+        Self {
+            uniform_type: PhantomData,
+            wgpu_resources,
+        }
+    }
+
+    pub fn bind_group_layout(&self) -> wgpu::BindGroupLayout {
+        self.wgpu_resources
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Uniform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX, // TODO: parameterize this?
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new(mem::size_of::<T>() as _),
+                    },
+                    count: None,
+                }],
+            })
+    }
+
+    pub fn bind_group(
+        &self,
+        layout: &wgpu::BindGroupLayout,
+        uniform_buffer: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        self.wgpu_resources
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Uniform BindGroup"),
+                layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                }],
+            })
+    }
+
+    pub fn new_uniform_buffer(&self) -> wgpu::Buffer {
+        self.wgpu_resources
+            .device
+            .create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Uniform Buffer"),
+                mapped_at_creation: false,
+                size: std::mem::size_of::<T>() as wgpu::BufferAddress,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            })
     }
 }

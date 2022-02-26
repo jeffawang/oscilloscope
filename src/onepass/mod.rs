@@ -1,4 +1,5 @@
 mod oscilloscope;
+mod state;
 mod wgpu_resources;
 
 use winit::{
@@ -75,7 +76,7 @@ pub fn main() {
             frame.present();
         }
         Event::MainEventsCleared => {
-            // TODO
+            window.request_redraw();
         }
         _ => {}
     })
@@ -83,5 +84,6 @@ pub fn main() {
 
 pub trait Shaderer {
     fn new(wgpu_resources: WgpuResources) -> Self;
+    fn update(&mut self);
     fn render(&self, view: &wgpu::TextureView);
 }

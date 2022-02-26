@@ -9,6 +9,12 @@ struct VertexInput {
     [[builtin(vertex_index)]] v_id: u32;
 };
 
+struct Uniforms {
+    time: f32;
+};
+
+[[group(0), binding(0)]] var<uniform> uniforms: Uniforms;
+
 [[stage(vertex)]]
 fn main_vs(in: VertexInput) -> VertexOutput {
     var x = f32(in.v_id % 2u);
