@@ -37,6 +37,7 @@ impl Oscilloscope {
     fn new_instance_buffer(wgpu_resources: &WgpuResources) -> wgpu::Buffer {
         let data = [
             Vertex([-0.5, -0.5]),
+            Vertex([-0.0, -0.0]),
             Vertex([0.1, -0.3]),
             Vertex([0.3, 0.3]),
             Vertex([-0.3, 0.6]),
@@ -79,6 +80,8 @@ impl Oscilloscope {
         };
 
         let primitive = wgpu::PrimitiveState {
+            // topology: wgpu::PrimitiveTopology::TriangleStrip,
+            topology: wgpu::PrimitiveTopology::TriangleStrip,
             polygon_mode: wgpu::PolygonMode::Line,
             // polygon_mode: wgpu::PolygonMode::Fill,
             ..Default::default()
@@ -116,7 +119,7 @@ impl Oscilloscope {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_vertex_buffer(0, self.instance_buffer.slice(..)); // TODO: fill in this buffer
-            rpass.draw(0..4, 0..4); // TODO: more instances
+            rpass.draw(0..4, 0..3); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
         }
         command_encoder.pop_debug_group();
     }
