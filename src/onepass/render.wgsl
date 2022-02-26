@@ -5,7 +5,7 @@ struct VertexOutput {
 
 [[stage(vertex)]]
 fn main_vs(
-    [[location(0)]] pos: vec2<f32>,
+    [[location(0)]] in_pos: vec2<f32>,
     [[builtin(vertex_index)]] vertex_index: u32
 ) -> VertexOutput {
     var pos: vec4<f32>;
@@ -13,23 +13,23 @@ fn main_vs(
     switch (vertex_index) {
         case 0: {
             col = vec4<f32>(1.0, 0.0, 0.0, 1.0);
-            pos = vec4<f32>(1.0, 0.0, 0.0, 1.0);
+            pos = vec4<f32>(in_pos.x, in_pos.y, 0.0, 1.0);
         }
         case 1: {
             col = vec4<f32>(0.0, 1.0, 0.0, 1.0);
-            pos = vec4<f32>(0.0, 1.0, 0.0, 1.0);
+            pos = vec4<f32>(in_pos.x, in_pos.y, 0.0, 1.0);
         }
         case 2: {
             col = vec4<f32>(0.0, 0.0, 1.0, 1.0);
-            pos = vec4<f32>(0.0, 0.0, 1.0, 1.0);
+            pos = vec4<f32>(in_pos.x, in_pos.y, 1.0, 1.0);
         }
         case 3: {
             col = vec4<f32>(0.0, 1.0, 1.0, 1.0);
-            pos = vec4<f32>(0.0, 1.0, 1.0, 1.0);
+            pos = vec4<f32>(in_pos.x, in_pos.y, 1.0, 1.0);
         }
         default: {
             col = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-            pos = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+            pos = vec4<f32>(in_pos.x, in_pos.y, 1.0, 1.0);
         }
     };
 

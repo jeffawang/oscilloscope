@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
 use super::{wgpu_resources::WgpuResources, Shaderer};
@@ -11,6 +12,10 @@ pub struct Oscilloscope {
     vertex_buffer: wgpu::Buffer,
 }
 
+#[repr(C)]
+#[derive(Pod, Copy, Zeroable, Clone)]
+struct Vertex([f32; 2]);
+
 impl Oscilloscope {
     fn new(wgpu_resources: WgpuResources) -> Self {
         Self {
@@ -21,8 +26,12 @@ impl Oscilloscope {
     }
 
     fn new_vertex_buffer(wgpu_resources: &WgpuResources) -> wgpu::Buffer {
-        // let data = [[-1.0, 0.0], [1.0, 0.0], [-1.0, 1.0], [1.0, 1.0]];
-        let data = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+        let data = [
+            Vertex([1.0, 0.0]),
+            Vertex([0.0, 1.0]),
+            Vertex([0.0, 0.0]),
+            Vertex([0.0, 1.0]),
+        ];
         wgpu_resources
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -31,6 +40,7 @@ impl Oscilloscope {
                 usage: wgpu::BufferUsages::VERTEX,
             })
     }
+
     fn new_render_pipeline(wgpu_resources: &WgpuResources) -> wgpu::RenderPipeline {
         let WgpuResources { device, config, .. } = wgpu_resources;
         let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
