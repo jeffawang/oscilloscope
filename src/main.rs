@@ -1,6 +1,7 @@
 mod blah;
 mod camera;
 mod instancing;
+mod onepass;
 mod ringbuffer;
 mod sound;
 mod texture;
@@ -321,7 +322,7 @@ impl State {
 }
 
 fn main() {
-    blah::main::main();
+    onepass::main();
     return;
     env_logger::init();
     let event_loop = EventLoop::new();
