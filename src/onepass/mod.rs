@@ -1,3 +1,4 @@
+mod oscilloscope;
 mod wgpu_resources;
 
 use winit::{
@@ -64,7 +65,7 @@ pub fn main() {
     })
 }
 
-pub trait Shaderer {
-    fn new(wgpu_resources: &WgpuResources) -> Self;
+pub trait Shaderer<'a> {
+    fn new(wgpu_resources: &'a WgpuResources) -> Self;
     fn render(&mut self, view: &wgpu::TextureView);
 }
