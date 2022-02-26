@@ -1,3 +1,6 @@
+// TODO: remove this
+#![allow(unreachable_code)]
+#![allow(unused_variables)]
 mod blah;
 mod camera;
 mod instancing;
@@ -324,7 +327,6 @@ impl State {
 fn main() {
     onepass::main();
     return;
-    env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 

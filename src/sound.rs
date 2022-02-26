@@ -1,6 +1,6 @@
 use std::{fs::File, iter::Map, path::Path};
 
-use hound::{WavIntoSamples, WavSamples};
+use hound::WavIntoSamples;
 use itertools::{Itertools, Tuples};
 
 type ConvertFn = fn(Result<i16, hound::Error>) -> f32;

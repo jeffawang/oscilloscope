@@ -1,4 +1,4 @@
-use std::{borrow::Cow, mem, num::NonZeroU32};
+use std::{borrow::Cow, mem};
 
 use itertools::Itertools;
 use wgpu::util::DeviceExt;
