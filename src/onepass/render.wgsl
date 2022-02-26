@@ -9,15 +9,6 @@ fn main_vs(
     [[location(1)]] next: vec2<f32>,
     [[builtin(vertex_index)]] v_id: u32
 ) -> VertexOutput {
-    //  v | bin(v) | tx | ty
-    // ---|--------|----|----
-    //  0 |   00   |  0 |  0
-    //  1 |   01   |  0 |  1
-    //  2 |   10   |  1 |  0
-    //  3 |   11   |  1 |  1
-    //  4 |  100   |  
-
-    var one = u32(1);
     var x = f32(v_id % 2u);
     x = -1.0 + 2.0 * x;
     var y = f32(v_id / 2u);
@@ -30,8 +21,8 @@ fn main_vs(
 
     var pos = curr + vec2<f32>(x,y);
 
-    var boink = next - curr;
-    var norm = normalize(vec2<f32>(-boink.y, boink.x)) * 0.01;
+    var between = next - curr;
+    var norm = normalize(vec2<f32>(-between.y, between.x)) * 0.01;
 
     pos = (1.0-y) * curr + y * next;
     pos = pos + norm * x;
