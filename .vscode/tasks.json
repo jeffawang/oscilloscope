@@ -16,6 +16,23 @@
             }
         },
         {
+            "label": "cargo run (RUST_BACKTRACE)",
+            "type": "shell",
+            "command": "~/.cargo/bin/cargo",
+            "args": [
+                "run"
+            ],
+            "options": {
+                "env": {
+                    "RUST_BACKTRACE": "1"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
             "type": "cargo",
             "command": "build",
             "problemMatcher": [
