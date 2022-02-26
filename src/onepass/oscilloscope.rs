@@ -2,7 +2,10 @@ use std::borrow::Cow;
 
 use bytemuck::{Pod, Zeroable};
 
+use itertools::Itertools;
 use wgpu::util::DeviceExt;
+
+use crate::{ringbuffer::RingBuffer, sound::WavStreamer};
 
 use super::{state, wgpu_resources::WgpuResources, Shaderer};
 
@@ -17,11 +20,11 @@ pub struct Oscilloscope {
 
 #[repr(C)]
 #[derive(Pod, Copy, Zeroable, Clone)]
-struct Vertex([f32; 2]);
+pub struct Vertex(pub [f32; 2]);
 
 impl Oscilloscope {
     fn new(wgpu_resources: WgpuResources) -> Self {
-        let state = state::State::new(&wgpu_resources);
+        let state = state::State::new(&wgpu_resources, "music/02 Lines.wav");
         Self {
             render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources, &state),
             instance_buffer: Oscilloscope::new_instance_buffer(&wgpu_resources),
@@ -38,11 +41,14 @@ impl Oscilloscope {
             Vertex([0.3, 0.3]),
             Vertex([-0.3, 0.6]),
         ];
+
+        let data = vec![Vertex([0.0, 0.0]); state::SAMPLES];
+
         wgpu_resources
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
-                contents: bytemuck::bytes_of(&data),
+                contents: bytemuck::cast_slice(&data),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             })
     }
@@ -119,7 +125,7 @@ impl Oscilloscope {
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_vertex_buffer(0, self.instance_buffer.slice(..)); // TODO: fill in this buffer
             rpass.set_bind_group(0, &self.state.uniform_bind_group, &[]);
-            rpass.draw(0..4, 0..3); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
+            rpass.draw(0..4, 0..(state::SAMPLES as u32)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
         }
         command_encoder.pop_debug_group();
     }
@@ -131,7 +137,9 @@ impl Shaderer for Oscilloscope {
     }
 
     fn update(&mut self) {
-        self.state.update();
+        self.state.update_uniforms();
+        self.state
+            .update_instances(&self.wgpu_resources.queue, &self.instance_buffer);
         self.state.write_queue(&self.wgpu_resources.queue);
     }
 
