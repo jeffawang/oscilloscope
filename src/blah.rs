@@ -123,7 +123,11 @@ impl Oscilloscope {
         });
 
         // Blit pipeline setup
-        let blit_pipeline = Self::new_blit_pipeline(device);
+        let blit_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+            label: None,
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shaders/blit.wgsl"))),
+        });
+        let blit_pipeline = Self::new_blit_pipeline(device, blit_shader);
         let blit_bind_group = Self::blit_bind_group(&blit_pipeline, device, &texture);
 
         Self {
@@ -411,12 +415,10 @@ impl Oscilloscope {
         })
     }
 
-    fn new_blit_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
-        let blit_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
-            label: None,
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shaders/blit.wgsl"))),
-        });
-
+    fn new_blit_pipeline(
+        device: &wgpu::Device,
+        blit_shader: wgpu::ShaderModule,
+    ) -> wgpu::RenderPipeline {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Blit Pipeline"),
             layout: None,
@@ -447,24 +449,12 @@ impl Oscilloscope {
     ) -> wgpu::BindGroup {
         let bind_group_layout = pipeline.get_bind_group_layout(0);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Blit"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            label: Some("Blit Sampler"),
             ..Default::default()
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("Blit View"),
-            format: None,
-            dimension: None,
-            aspect: wgpu::TextureAspect::All,
-            base_mip_level: 0,
-            mip_level_count: NonZeroU32::new(1),
-            base_array_layer: 0,
-            array_layer_count: None,
+            ..Default::default()
         });
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Blit Bind Group"),
