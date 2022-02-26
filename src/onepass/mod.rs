@@ -7,16 +7,16 @@ use winit::{
     window::WindowBuilder,
 };
 
-use self::wgpu_resources::WgpuResources;
+use self::{oscilloscope::Oscilloscope, wgpu_resources::WgpuResources};
 
 pub fn main() {
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    // TODO: do setup
-
     let wgpu_resources = wgpu_resources::WgpuResources::new(&window);
+
+    let mut oscilloscope = Oscilloscope::new(wgpu_resources);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -33,18 +33,20 @@ pub fn main() {
                     },
                 ..
             } => *control_flow = ControlFlow::Exit,
-            WindowEvent::Resized(physical_size) => {
+            WindowEvent::Resized(_physical_size) => {
                 // TODO
                 todo!();
             }
-            WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+            WindowEvent::ScaleFactorChanged {
+                new_inner_size: _, ..
+            } => {
                 // TODO
                 todo!()
             }
             WindowEvent::KeyboardInput {
                 input:
                     KeyboardInput {
-                        state,
+                        state: _,
                         virtual_keycode: Some(VirtualKeyCode::Space),
                         ..
                     },
@@ -56,7 +58,26 @@ pub fn main() {
             _ => {}
         },
         Event::RedrawRequested(window_id) if window_id == window.id() => {
-            // TODO
+            let WgpuResources {
+                surface,
+                device,
+                config,
+                ..
+            } = &oscilloscope.wgpu_resources;
+            let frame = match surface.get_current_texture() {
+                Ok(frame) => frame,
+                Err(_) => {
+                    surface.configure(&device, &config);
+                    surface
+                        .get_current_texture()
+                        .expect("Failed to acquire next surface texture!")
+                }
+            };
+            let view = &frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            oscilloscope.render(view);
+            frame.present();
         }
         Event::MainEventsCleared => {
             // TODO
@@ -65,7 +86,7 @@ pub fn main() {
     })
 }
 
-pub trait Shaderer<'a> {
-    fn new(wgpu_resources: &'a WgpuResources) -> Self;
+pub trait Shaderer {
+    fn new(wgpu_resources: WgpuResources) -> Self;
     fn render(&mut self, view: &wgpu::TextureView);
 }

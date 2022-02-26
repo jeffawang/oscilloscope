@@ -2,11 +2,11 @@ use winit::window::Window;
 
 /// WgpuResources holds the information needed to set up shader pipeline and whatnot.
 pub struct WgpuResources {
-    surface: wgpu::Surface,
-    config: wgpu::SurfaceConfiguration,
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    pub surface: wgpu::Surface,
+    pub config: wgpu::SurfaceConfiguration,
+    pub adapter: wgpu::Adapter,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
 }
 
 impl WgpuResources {
