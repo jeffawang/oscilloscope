@@ -1,15 +1,21 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, time::Instant};
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
 use super::{wgpu_resources::WgpuResources, Shaderer};
 
+struct Uniforms {
+    time: Instant,
+}
+
 pub struct Oscilloscope {
     pub wgpu_resources: WgpuResources,
 
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
+
+    uniforms: Uniforms,
 }
 
 #[repr(C)]
@@ -22,6 +28,9 @@ impl Oscilloscope {
             render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources),
             vertex_buffer: Oscilloscope::new_vertex_buffer(&wgpu_resources),
             wgpu_resources: wgpu_resources,
+            uniforms: Uniforms {
+                time: Instant::now(),
+            },
         }
     }
 
@@ -56,12 +65,13 @@ impl Oscilloscope {
         let vertex = wgpu::VertexState {
             module: &shader,
             entry_point: "main_vs",
-            buffers: &[ // TODO: use more buffers... with instance stride??
+            buffers: &[
+                // TODO: use more buffers... with instance stride??
                 wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<[f32;2]>() as wgpu::BufferAddress,
+                    array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2]
-                }
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2],
+                },
                 // wgpu::VertexBufferLayout {
                 //     array_stride: std::mem::size_of::<Line>() as _, // TODO: revisit this...
                 //     step_mode: wgpu::VertexStepMode::Instance,
@@ -122,6 +132,9 @@ impl Oscilloscope {
         }
         command_encoder.pop_debug_group();
     }
+    pub fn update(&mut self) {
+        self.uniforms.time = Instant::now();
+    }
 }
 
 impl Shaderer for Oscilloscope {
@@ -129,7 +142,7 @@ impl Shaderer for Oscilloscope {
         Oscilloscope::new(wgpu_resources)
     }
 
-    fn render(&mut self, view: &wgpu::TextureView) {
+    fn render(&self, view: &wgpu::TextureView) {
         let WgpuResources { device, queue, .. } = &self.wgpu_resources;
 
         let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {

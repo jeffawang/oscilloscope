@@ -64,18 +64,13 @@ pub fn main() {
                 config,
                 ..
             } = &oscilloscope.wgpu_resources;
-            let frame = match surface.get_current_texture() {
-                Ok(frame) => frame,
-                Err(_) => {
-                    surface.configure(&device, &config);
-                    surface
-                        .get_current_texture()
-                        .expect("Failed to acquire next surface texture!")
-                }
-            };
+
+            let frame = oscilloscope.wgpu_resources.frame();
             let view = &frame
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
+
+            oscilloscope.update();
             oscilloscope.render(view);
             frame.present();
         }
@@ -88,5 +83,5 @@ pub fn main() {
 
 pub trait Shaderer {
     fn new(wgpu_resources: WgpuResources) -> Self;
-    fn render(&mut self, view: &wgpu::TextureView);
+    fn render(&self, view: &wgpu::TextureView);
 }

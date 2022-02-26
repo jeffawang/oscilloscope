@@ -50,4 +50,15 @@ impl WgpuResources {
             queue,
         }
     }
+    pub fn frame(&self) -> (wgpu::SurfaceTexture) {
+        match self.surface.get_current_texture() {
+            Ok(frame) => frame,
+            Err(_) => {
+                self.surface.configure(&self.device, &self.config);
+                self.surface
+                    .get_current_texture()
+                    .expect("Failed to acquire next surface texture!")
+            }
+        }
+    }
 }
