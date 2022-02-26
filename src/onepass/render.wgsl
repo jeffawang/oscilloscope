@@ -5,10 +5,16 @@ struct VertexOutput {
 
 [[stage(vertex)]]
 fn main_vs(
-    [[location(0)]] vert_pos: vec2<f32>,
-    [[location(1)]] inst_pos: vec2<f32>,
+    [[location(0)]] inst_pos: vec2<f32>,
     [[builtin(vertex_index)]] vertex_index: u32
 ) -> VertexOutput {
+    //  v | bin(v) | tx | ty
+    // ---|--------|----|----
+    //  0 |   00   |  0 |  0
+    //  1 |   01   |  0 |  1
+    //  2 |   10   |  1 |  0
+    //  3 |   11   |  1 |  1
+
     var one = u32(1);
     var tx = (vertex_index >> one) & one;
     var ty = (vertex_index & one);
