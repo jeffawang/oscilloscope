@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use bytemuck::{Pod, Zeroable};
+use rand::distributions::Uniform;
 
 use super::wgpu_resources::{UniformBinder, WgpuResources};
 
@@ -8,6 +9,16 @@ use super::wgpu_resources::{UniformBinder, WgpuResources};
 #[derive(Pod, Copy, Zeroable, Clone)]
 pub struct Uniforms {
     time: f32,
+    line_thickness: f32,
+}
+
+impl Default for Uniforms {
+    fn default() -> Self {
+        Self {
+            time: Default::default(),
+            line_thickness: 0.01,
+        }
+    }
 }
 
 pub struct State {
@@ -29,7 +40,7 @@ impl State {
             uniform_binder.bind_group(&uniform_bind_group_layout, &uniform_buffer);
 
         Self {
-            uniforms: Uniforms { time: 0.0 },
+            uniforms: Uniforms::default(),
             start_time: Instant::now(),
             uniform_buffer,
             uniform_bind_group_layout,

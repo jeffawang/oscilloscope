@@ -11,6 +11,7 @@ struct VertexInput {
 
 struct Uniforms {
     time: f32;
+    line_thickness: f32;
 };
 
 [[group(0), binding(0)]] var<uniform> uniforms: Uniforms;
@@ -25,7 +26,7 @@ fn main_vs(in: VertexInput) -> VertexOutput {
     var pos = in.curr + vec2<f32>(x,y);
 
     var between = in.next - in.curr;
-    var norm = normalize(vec2<f32>(-between.y, between.x)) * 0.01;
+    var norm = normalize(vec2<f32>(-between.y, between.x)) * uniforms.line_thickness;
 
     pos = (1.0-y) * in.curr + y * in.next;
     pos = pos + norm * x;
