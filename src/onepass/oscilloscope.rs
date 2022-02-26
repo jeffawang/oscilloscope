@@ -2,10 +2,7 @@ use std::borrow::Cow;
 
 use bytemuck::{Pod, Zeroable};
 
-use itertools::Itertools;
 use wgpu::util::DeviceExt;
-
-use crate::{ringbuffer::RingBuffer, sound::WavStreamer};
 
 use super::{state, wgpu_resources::WgpuResources, Shaderer};
 
