@@ -14,6 +14,7 @@ pub struct Oscilloscope {
 
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
+    instance_buffer: wgpu::Buffer,
 
     uniforms: Uniforms,
 }
@@ -27,7 +28,8 @@ impl Oscilloscope {
         Self {
             render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources),
             vertex_buffer: Oscilloscope::new_vertex_buffer(&wgpu_resources),
-            wgpu_resources: wgpu_resources,
+            instance_buffer: Oscilloscope::new_instance_buffer(&wgpu_resources),
+            wgpu_resources,
             uniforms: Uniforms {
                 time: Instant::now(),
             },
@@ -47,6 +49,22 @@ impl Oscilloscope {
                 label: Some("Vertex Buffer"),
                 contents: bytemuck::bytes_of(&data),
                 usage: wgpu::BufferUsages::VERTEX,
+            })
+    }
+
+    fn new_instance_buffer(wgpu_resources: &WgpuResources) -> wgpu::Buffer {
+        let data = [
+            Vertex([1.0, 0.0]),
+            Vertex([0.1, 0.1]),
+            Vertex([0.0, 0.0]),
+            Vertex([0.0, 1.0]),
+        ];
+        wgpu_resources
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::bytes_of(&data),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             })
     }
 
@@ -72,6 +90,11 @@ impl Oscilloscope {
                     step_mode: wgpu::VertexStepMode::Vertex,
                     attributes: &wgpu::vertex_attr_array![0 => Float32x2],
                 },
+                wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![1 => Float32x2],
+                },
                 // wgpu::VertexBufferLayout {
                 //     array_stride: std::mem::size_of::<Line>() as _, // TODO: revisit this...
                 //     step_mode: wgpu::VertexStepMode::Instance,
@@ -92,7 +115,8 @@ impl Oscilloscope {
         };
 
         let primitive = wgpu::PrimitiveState {
-            polygon_mode: wgpu::PolygonMode::Fill,
+            polygon_mode: wgpu::PolygonMode::Line,
+            // polygon_mode: wgpu::PolygonMode::Fill,
             ..Default::default()
         };
 
@@ -128,7 +152,8 @@ impl Oscilloscope {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..)); // TODO: fill in this buffer
-            rpass.draw(0..4, 0..1); // TODO: more instances
+            rpass.set_vertex_buffer(1, self.instance_buffer.slice(..)); // TODO: fill in this buffer
+            rpass.draw(0..4, 0..4); // TODO: more instances
         }
         command_encoder.pop_debug_group();
     }

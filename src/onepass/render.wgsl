@@ -5,37 +5,23 @@ struct VertexOutput {
 
 [[stage(vertex)]]
 fn main_vs(
-    [[location(0)]] in_pos: vec2<f32>,
+    [[location(0)]] vert_pos: vec2<f32>,
+    [[location(1)]] inst_pos: vec2<f32>,
     [[builtin(vertex_index)]] vertex_index: u32
 ) -> VertexOutput {
-    var pos: vec4<f32>;
-    var col: vec4<f32>;
-    switch (vertex_index) {
-        case 0: {
-            col = vec4<f32>(1.0, 0.0, 0.0, 1.0);
-            pos = vec4<f32>(in_pos.x, in_pos.y, 0.0, 1.0);
-        }
-        case 1: {
-            col = vec4<f32>(0.0, 1.0, 0.0, 1.0);
-            pos = vec4<f32>(in_pos.x, in_pos.y, 0.0, 1.0);
-        }
-        case 2: {
-            col = vec4<f32>(0.0, 0.0, 1.0, 1.0);
-            pos = vec4<f32>(in_pos.x, in_pos.y, 1.0, 1.0);
-        }
-        case 3: {
-            col = vec4<f32>(0.0, 1.0, 1.0, 1.0);
-            pos = vec4<f32>(in_pos.x, in_pos.y, 1.0, 1.0);
-        }
-        default: {
-            col = vec4<f32>(1.0, 1.0, 1.0, 1.0);
-            pos = vec4<f32>(in_pos.x, in_pos.y, 1.0, 1.0);
-        }
-    };
+    var one = u32(1);
+    var tx = (vertex_index >> one) & one;
+    var ty = (vertex_index & one);
 
+    var x = -1.0 + 2.0 * f32(tx);
+    var y = f32(ty);
+
+    var r = f32(~(tx | ty));
+    var g = y;
+    var b = x;
     return VertexOutput(
-        pos,
-        col
+        vec4<f32>(x, y, 0.0, 1.0),
+        vec4<f32>(r, g, b,   1.0)
     );
 }
 
