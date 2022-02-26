@@ -6,6 +6,8 @@ use winit::{
     window::WindowBuilder,
 };
 
+use self::wgpu_resources::WgpuResources;
+
 pub fn main() {
     env_logger::init();
     let event_loop = EventLoop::new();
@@ -52,8 +54,17 @@ pub fn main() {
             }
             _ => {}
         },
-        Event::RedrawRequested(window_id) if window_id == window.id() => {}
-        Event::MainEventsCleared => {}
+        Event::RedrawRequested(window_id) if window_id == window.id() => {
+            // TODO
+        }
+        Event::MainEventsCleared => {
+            // TODO
+        }
         _ => {}
     })
+}
+
+pub trait Shaderer {
+    fn new(wgpu_resources: &WgpuResources) -> Self;
+    fn render(&mut self, view: &wgpu::TextureView);
 }
