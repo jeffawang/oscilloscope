@@ -19,6 +19,8 @@ pub fn main() {
 
     let mut oscilloscope = Oscilloscope::new(wgpu_resources);
 
+    let mut paused = false;
+
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             ref event,
@@ -47,14 +49,13 @@ pub fn main() {
             WindowEvent::KeyboardInput {
                 input:
                     KeyboardInput {
-                        state: _,
+                        state: ElementState::Pressed,
                         virtual_keycode: Some(VirtualKeyCode::Space),
                         ..
                     },
                 ..
             } => {
-                // TODO
-                todo!();
+                paused = !paused;
             }
             _ => {}
         },
@@ -76,7 +77,9 @@ pub fn main() {
             frame.present();
         }
         Event::MainEventsCleared => {
-            window.request_redraw();
+            if !paused {
+                window.request_redraw();
+            }
         }
         _ => {}
     })
