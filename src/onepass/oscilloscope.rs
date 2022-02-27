@@ -21,7 +21,7 @@ pub struct Vertex(pub [f32; 2]);
 
 impl Oscilloscope {
     fn new(wgpu_resources: WgpuResources) -> Self {
-        let state = state::State::new(&wgpu_resources, "music/02 Lines.wav");
+        let state = state::State::new(&wgpu_resources, "music/07 Asteroids.wav");
         Self {
             render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources, &state),
             instance_buffer: Oscilloscope::new_instance_buffer(&wgpu_resources),
@@ -84,8 +84,8 @@ impl Oscilloscope {
         let primitive = wgpu::PrimitiveState {
             // topology: wgpu::PrimitiveTopology::TriangleStrip,
             topology: wgpu::PrimitiveTopology::TriangleStrip,
-            polygon_mode: wgpu::PolygonMode::Line,
-            // polygon_mode: wgpu::PolygonMode::Fill,
+            // polygon_mode: wgpu::PolygonMode::Line,
+            polygon_mode: wgpu::PolygonMode::Fill,
             ..Default::default()
         };
 
@@ -122,7 +122,7 @@ impl Oscilloscope {
             rpass.set_pipeline(&self.render_pipeline);
             rpass.set_vertex_buffer(0, self.instance_buffer.slice(..)); // TODO: fill in this buffer
             rpass.set_bind_group(0, &self.state.uniform_bind_group, &[]);
-            rpass.draw(0..4, 0..(state::SAMPLES as u32)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
+            rpass.draw(0..4, 0..(state::SAMPLES as u32 / 10)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
         }
         command_encoder.pop_debug_group();
     }
