@@ -11,13 +11,15 @@ use super::wgpu_resources::{UniformBinder, WgpuResources};
 pub struct Uniforms {
     time: f32,
     line_thickness: f32,
+    count: f32,
 }
 
 impl Default for Uniforms {
     fn default() -> Self {
         Self {
             time: Default::default(),
-            line_thickness: 0.01,
+            line_thickness: 0.0075,
+            count: SAMPLES as f32,
         }
     }
 }
@@ -65,7 +67,7 @@ impl State {
     }
 
     pub fn update_instances(&mut self, queue: &wgpu::Queue, instance_buffer: &wgpu::Buffer) {
-        let samples = 22000;
+        let samples = 32000;
         self.wav_streamer
             .iter()
             .take(samples as usize)
