@@ -50,13 +50,19 @@ pub fn main() {
                 input:
                     KeyboardInput {
                         state: ElementState::Pressed,
-                        virtual_keycode: Some(VirtualKeyCode::Space),
+                        virtual_keycode: keycode,
                         ..
                     },
                 ..
-            } => {
-                paused = !paused;
-            }
+            } => match keycode {
+                Some(VirtualKeyCode::Space) => {
+                    paused = !paused;
+                }
+                Some(VirtualKeyCode::J) => {
+                    window.request_redraw();
+                }
+                _ => {}
+            },
             _ => {}
         },
         Event::RedrawRequested(window_id) if window_id == window.id() => {

@@ -10,7 +10,7 @@ pub struct Oscilloscope {
     pub wgpu_resources: WgpuResources,
 
     render_pipeline: wgpu::RenderPipeline,
-    instance_buffer: wgpu::Buffer,
+    compute_pipeline: wgpu::ComputePipeline,
 
     state: state::State,
 }
@@ -24,30 +24,10 @@ impl Oscilloscope {
         let state = state::State::new(&wgpu_resources, "music/07 Asteroids.wav");
         Self {
             render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources, &state),
-            instance_buffer: Oscilloscope::new_instance_buffer(&wgpu_resources),
+            compute_pipeline: Oscilloscope::new_compute_pipeline(&wgpu_resources, &state),
             wgpu_resources,
             state,
         }
-    }
-
-    fn new_instance_buffer(wgpu_resources: &WgpuResources) -> wgpu::Buffer {
-        let data = [
-            Vertex([-0.5, -0.5]),
-            Vertex([-0.0, -0.0]),
-            Vertex([0.1, -0.3]),
-            Vertex([0.3, 0.3]),
-            Vertex([-0.3, 0.6]),
-        ];
-
-        let data = vec![Vertex([0.0, 0.0]); state::SAMPLES];
-
-        wgpu_resources
-            .device
-            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&data),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            })
     }
 
     fn new_render_pipeline(
@@ -57,7 +37,7 @@ impl Oscilloscope {
         let WgpuResources { device, config, .. } = wgpu_resources;
         let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("render.wgsl"))),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shaders/render.wgsl"))),
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
@@ -100,6 +80,45 @@ impl Oscilloscope {
             primitive,
         })
     }
+
+    fn new_compute_pipeline(
+        wgpu_resources: &WgpuResources,
+        state: &state::State,
+    ) -> wgpu::ComputePipeline {
+        let WgpuResources { device, .. } = wgpu_resources;
+        let compute_shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+            label: Some("Compute Shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shaders/compute.wgsl"))),
+        });
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Compute Pipeline Layout"),
+                bind_group_layouts: &[&state.wav_stream_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Compute Pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &compute_shader,
+            entry_point: "main",
+        })
+    }
+
+    fn cpass(&self, command_encoder: &mut wgpu::CommandEncoder) {
+        let compute_pass_descriptor = wgpu::ComputePassDescriptor {
+            label: Some("Compute Pass"),
+        };
+
+        command_encoder.push_debug_group("Compute Pass");
+        {
+            let mut cpass = command_encoder.begin_compute_pass(&compute_pass_descriptor);
+            cpass.set_pipeline(&self.compute_pipeline);
+            cpass.set_bind_group(0, &self.state.wav_stream_bind_groups[0], &[]);
+            cpass.dispatch(64 as u32, 1, 1);
+        }
+        command_encoder.pop_debug_group();
+    }
+
     fn rpass(&self, command_encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
         let color_attachments = [wgpu::RenderPassColorAttachment {
             view,
@@ -120,9 +139,9 @@ impl Oscilloscope {
         {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             rpass.set_pipeline(&self.render_pipeline);
-            rpass.set_vertex_buffer(0, self.instance_buffer.slice(..)); // TODO: fill in this buffer
+            rpass.set_vertex_buffer(0, self.state.instance_buffer.slice(..)); // TODO: fill in this buffer
             rpass.set_bind_group(0, &self.state.uniform_bind_group, &[]);
-            rpass.draw(0..4, 0..(state::SAMPLES as u32 / 10)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
+            rpass.draw(0..4, 0..(state::SAMPLE_BUFFER_SIZE as u32 / 10)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
         }
         command_encoder.pop_debug_group();
     }
@@ -135,8 +154,7 @@ impl Shaderer for Oscilloscope {
 
     fn update(&mut self) {
         self.state.update_uniforms();
-        self.state
-            .update_instances(&self.wgpu_resources.queue, &self.instance_buffer);
+        self.state.update_instances(&self.wgpu_resources.queue);
         self.state.write_queue(&self.wgpu_resources.queue);
     }
 
@@ -147,6 +165,9 @@ impl Shaderer for Oscilloscope {
             label: Some("Command Encoder"),
         });
 
+        println!("cpass");
+        self.cpass(&mut command_encoder);
+        println!("rpass");
         self.rpass(&mut command_encoder, view);
         queue.submit(Some(command_encoder.finish()));
     }
