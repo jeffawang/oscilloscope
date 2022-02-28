@@ -241,10 +241,10 @@ impl State {
 
         let samples = (22100/* * millis as f64 */) as usize;
 
-        self.wav_streamer
-            .iter()
-            .take(samples as usize)
-            .for_each(|v| self.rb.push(v));
+        // self.wav_streamer
+        //     .iter()
+        //     .take(samples as usize)
+        //     .for_each(|v| self.rb.push(v));
 
         // let verts = self
         //     .rb
