@@ -7,6 +7,12 @@ use crate::{ringbuffer::RingBuffer, sound::WavStreamer};
 
 use super::wgpu_resources::{UniformBinder, WavStreamBinder, WgpuResources};
 
+// TODO: parameterize these
+// TODO: Set COMPUTE_BUFFER_FACTOR > 1
+pub const SAMPLE_RENDER_COUNT: usize = 32000;
+pub const SAMPLE_BUFFER_SIZE: usize = 5 * 44100;
+pub const COMPUTE_BUFFER_FACTOR: usize = 1;
+
 #[repr(C)]
 #[derive(Pod, Copy, Zeroable, Clone)]
 pub struct Uniforms {
@@ -41,18 +47,13 @@ pub struct State {
     pub compute_buffer_size: usize,
     pub compute_buffer: wgpu::Buffer,
     pub instance_buffer: wgpu::Buffer,
+    instance_buffer_offset: wgpu::BufferAddress,
     pub wav_stream_bind_groups: Vec<wgpu::BindGroup>,
     pub wav_stream_bind_group_layout: wgpu::BindGroupLayout,
 
     wav_streamer: WavStreamer,
     rb: RingBuffer<(f32, f32)>,
 }
-
-// TODO: parameterize these
-// TODO: Set COMPUTE_BUFFER_FACTOR > 1
-pub const SAMPLE_RENDER_COUNT: usize = 32000;
-pub const SAMPLE_BUFFER_SIZE: usize = 5 * 44100;
-pub const COMPUTE_BUFFER_FACTOR: usize = 1;
 
 impl State {
     pub fn new(wgpu_resources: &WgpuResources, filename: &str) -> Self {
@@ -94,6 +95,7 @@ impl State {
             compute_buffer_size: wav_stream_binder.compute_buffer_size,
             compute_buffer,
             instance_buffer,
+            instance_buffer_offset: 0,
             wav_stream_bind_groups,
             wav_stream_bind_group_layout,
 
@@ -104,6 +106,7 @@ impl State {
 
     pub fn update_uniforms(&mut self) {
         self.frame += 1;
+        self.instance_buffer_offset += 100;
         self.uniforms.time = Instant::now().duration_since(self.start_time).as_secs_f32();
         self.uniforms.frame = self.frame;
     }
@@ -130,5 +133,11 @@ impl State {
 
     pub fn write_queue(&self, queue: &wgpu::Queue) {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&self.uniforms));
+    }
+
+    pub fn instance_buffer_slice(&self) -> wgpu::BufferSlice {
+        let start = self.instance_buffer_offset;
+        let end = start + SAMPLE_RENDER_COUNT as u64 * std::mem::size_of::<[i32; 2]>() as u64;
+        self.instance_buffer.slice(start..end)
     }
 }

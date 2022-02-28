@@ -139,7 +139,7 @@ impl Oscilloscope {
         {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             rpass.set_pipeline(&self.render_pipeline);
-            rpass.set_vertex_buffer(0, self.state.instance_buffer.slice(32..)); // TODO: fill in this buffer
+            rpass.set_vertex_buffer(0, self.state.instance_buffer_slice()); // TODO: fill in this buffer
             rpass.set_bind_group(0, &self.state.uniform_bind_group, &[]);
             rpass.draw(0..4, 0..(state::SAMPLE_RENDER_COUNT as u32)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
         }
@@ -165,8 +165,10 @@ impl Shaderer for Oscilloscope {
             label: Some("Command Encoder"),
         });
 
-        println!("cpass");
-        self.cpass(&mut command_encoder);
+        if self.state.frame == 1 {
+            println!("cpass");
+            self.cpass(&mut command_encoder);
+        }
 
         println!("rpass");
         self.rpass(&mut command_encoder, view);
