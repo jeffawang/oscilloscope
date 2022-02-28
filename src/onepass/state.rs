@@ -1,4 +1,4 @@
-use std::{num::NonZeroU64, time::Instant};
+use std::{num::NonZeroU64, ops::Range, time::Instant};
 
 use bytemuck::{Pod, Zeroable};
 use itertools::Itertools;
@@ -47,7 +47,7 @@ pub struct State {
     pub compute_buffer_size: usize,
     pub compute_buffer: wgpu::Buffer,
     pub instance_buffer: wgpu::Buffer,
-    instance_buffer_offset: wgpu::BufferAddress,
+    instance_buffer_offset: u32,
     pub wav_stream_bind_groups: Vec<wgpu::BindGroup>,
     pub wav_stream_bind_group_layout: wgpu::BindGroupLayout,
 
@@ -135,9 +135,14 @@ impl State {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&self.uniforms));
     }
 
-    pub fn instance_buffer_slice(&self) -> wgpu::BufferSlice {
-        let start = self.instance_buffer_offset;
-        let end = start + SAMPLE_RENDER_COUNT as u64 * std::mem::size_of::<[i32; 2]>() as u64;
-        self.instance_buffer.slice(start..end)
+    pub fn instance_buffer_ranges(&self) -> Vec<Range<u32>> {
+        let buffer_size = SAMPLE_BUFFER_SIZE as u32;
+        let start = self.instance_buffer_offset % buffer_size;
+        let end = (start + SAMPLE_RENDER_COUNT as u32) % buffer_size;
+        if start <= end {
+            vec![start..end]
+        } else {
+            vec![0..end, start..buffer_size]
+        }
     }
 }
