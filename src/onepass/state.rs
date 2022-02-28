@@ -10,6 +10,7 @@ use super::wgpu_resources::{UniformBinder, WavStreamBinder, WgpuResources};
 #[repr(C)]
 #[derive(Pod, Copy, Zeroable, Clone)]
 pub struct Uniforms {
+    frame: u32,
     time: f32,
     line_thickness: f32,
     count: f32,
@@ -18,6 +19,7 @@ pub struct Uniforms {
 impl Default for Uniforms {
     fn default() -> Self {
         Self {
+            frame: 0,
             time: Default::default(),
             line_thickness: 0.0075,
             count: SAMPLE_BUFFER_SIZE as f32,
@@ -26,6 +28,7 @@ impl Default for Uniforms {
 }
 
 pub struct State {
+    pub frame: u32,
     start_time: Instant,
     pub uniforms: Uniforms,
 
@@ -47,6 +50,7 @@ pub struct State {
 
 // TODO: parameterize these
 // TODO: Set COMPUTE_BUFFER_FACTOR > 1
+pub const SAMPLE_RENDER_COUNT: usize = 32000;
 pub const SAMPLE_BUFFER_SIZE: usize = 5 * 44100;
 pub const COMPUTE_BUFFER_FACTOR: usize = 1;
 
@@ -78,6 +82,7 @@ impl State {
         let rb = RingBuffer::new(vec![(0.0, 0.0); SAMPLE_BUFFER_SIZE]);
 
         Self {
+            frame: 0,
             uniforms: Uniforms::default(),
             start_time: Instant::now(),
             uniform_buffer,
@@ -98,7 +103,9 @@ impl State {
     }
 
     pub fn update_uniforms(&mut self) {
+        self.frame += 1;
         self.uniforms.time = Instant::now().duration_since(self.start_time).as_secs_f32();
+        self.uniforms.frame = self.frame;
     }
 
     pub fn update_instances(&mut self, queue: &wgpu::Queue) {
@@ -109,7 +116,7 @@ impl State {
         //     .for_each(|v| self.rb.push(v));
 
         // let verts = self.rb.iter().map(|(x, y)| [x, y]).collect::<Vec<_>>();
-        let samples = 32000;
+        let samples = SAMPLE_RENDER_COUNT;
 
         let verts = self
             .wav_streamer
