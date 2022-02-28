@@ -10,6 +10,7 @@ struct VertexInput {
 };
 
 struct Uniforms {
+    frame: u32;
     time: f32;
     line_thickness: f32;
     count: f32;
