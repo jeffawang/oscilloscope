@@ -3,8 +3,6 @@ use std::{marker::PhantomData, mem, num::NonZeroU64};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
 
-use super::oscilloscope::Vertex;
-
 /// WgpuResources holds the information needed to set up shader pipeline and whatnot.
 pub struct WgpuResources {
     pub surface: wgpu::Surface,
@@ -191,12 +189,13 @@ impl<'a> WavStreamBinder<'a> {
         // bind entry 1: temporary compute buffer
         // bind entry 2: buffer binding with offset into instance buffer
         let size = NonZeroU64::new(self.compute_buffer_size as u64);
+        let offset_stride = (self.compute_buffer_size * std::mem::size_of::<[i32; 2]>()) as u64;
         (0..self.compute_buffer_factor)
             .map(|i| {
                 self.wgpu_resources
                     .device
                     .create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("Wav Stream Bind Group"),
+                        label: Some(&format!("Wav Stream Bind Group {}", i)),
                         layout,
                         entries: &[
                             wgpu::BindGroupEntry {
@@ -209,10 +208,7 @@ impl<'a> WavStreamBinder<'a> {
                                 binding: 1,
                                 resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                                     buffer: instance_buffer,
-                                    offset: (i
-                                        * self.compute_buffer_size
-                                        * std::mem::size_of::<[i32; 2]>())
-                                        as u64,
+                                    offset: i as u64 * offset_stride,
                                     size,
                                 }),
                             },

@@ -10,8 +10,8 @@ use super::wgpu_resources::{UniformBinder, WavStreamBinder, WgpuResources};
 // TODO: parameterize these
 // TODO: Set COMPUTE_BUFFER_FACTOR > 1
 pub const SAMPLE_RENDER_COUNT: usize = 32000;
-pub const SAMPLE_BUFFER_SIZE: usize = 5 * 44100;
-pub const COMPUTE_BUFFER_FACTOR: usize = 1;
+pub const SAMPLE_BUFFER_SIZE: usize = 256 * 172 * 10;
+pub const COMPUTE_BUFFER_FACTOR: usize = 2;
 
 #[repr(C)]
 #[derive(Pod, Copy, Zeroable, Clone)]
