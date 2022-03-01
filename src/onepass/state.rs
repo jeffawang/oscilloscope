@@ -8,10 +8,12 @@ use crate::{ringbuffer::RingBuffer, sound::WavStreamer};
 use super::wgpu_resources::{UniformBinder, WavStreamBinder, WgpuResources};
 
 // TODO: parameterize these
-// TODO: Set COMPUTE_BUFFER_FACTOR > 1
 pub const SAMPLE_RENDER_COUNT: usize = 32000;
+// SAMPLE_BUFFER_SIZE must be a multiple of 256 for proper alignment
 pub const SAMPLE_BUFFER_SIZE: usize = 256 * 172 * 10;
 pub const COMPUTE_BUFFER_FACTOR: usize = 2;
+pub const COMPUTE_BUFFER_LEN: usize = SAMPLE_BUFFER_SIZE / COMPUTE_BUFFER_FACTOR;
+pub const COMPUTE_BUFFER_SIZE: u32 = (COMPUTE_BUFFER_LEN * std::mem::size_of::<[i32; 2]>()) as u32;
 
 #[repr(C)]
 #[derive(Pod, Copy, Zeroable, Clone)]
@@ -46,13 +48,16 @@ pub struct State {
     pub compute_buffer_factor: usize,
     pub compute_buffer_size: usize,
     pub compute_buffer: wgpu::Buffer,
+
     pub instance_buffer: wgpu::Buffer,
     instance_buffer_offset: u32,
     pub wav_stream_bind_groups: Vec<wgpu::BindGroup>,
     pub wav_stream_bind_group_layout: wgpu::BindGroupLayout,
 
+    pub wav_stream_bind_group_idx: usize,
+    pub wav_stream_bind_group_prev_idx: usize,
+
     wav_streamer: WavStreamer,
-    rb: RingBuffer<(f32, f32)>,
 }
 
 impl State {
@@ -70,6 +75,7 @@ impl State {
             &wav_streamer.spec,
             SAMPLE_BUFFER_SIZE,
             COMPUTE_BUFFER_FACTOR,
+            COMPUTE_BUFFER_LEN,
         );
         let wav_stream_bind_group_layout = wav_stream_binder.bind_group_layout();
         let (compute_buffer, instance_buffer) = wav_stream_binder.new_buffers();
@@ -79,8 +85,6 @@ impl State {
             &compute_buffer,
             &instance_buffer,
         );
-
-        let rb = RingBuffer::new(vec![(0.0, 0.0); SAMPLE_BUFFER_SIZE]);
 
         Self {
             frame: 0,
@@ -99,16 +103,37 @@ impl State {
             wav_stream_bind_groups,
             wav_stream_bind_group_layout,
 
+            wav_stream_bind_group_idx: 0,
+            wav_stream_bind_group_prev_idx: 1,
+
             wav_streamer,
-            rb,
         }
     }
 
     pub fn update_uniforms(&mut self) {
         self.frame += 1;
-        self.instance_buffer_offset += 100;
+
+        let prev_time = self.uniforms.time;
         self.uniforms.time = Instant::now().duration_since(self.start_time).as_secs_f32();
+
+        let time_delta = self.uniforms.time - prev_time;
+
+        let hz = self.wav_streamer.spec.sample_rate as f32;
+
+        self.instance_buffer_offset += (hz * time_delta) as u32 % SAMPLE_BUFFER_SIZE as u32;
+        self.wav_stream_bind_group_prev_idx = self.wav_stream_bind_group_idx;
+        self.wav_stream_bind_group_idx = self
+            .wav_stream_bind_group_idx_at_offset(self.instance_buffer_offset + COMPUTE_BUFFER_SIZE);
+
         self.uniforms.frame = self.frame;
+    }
+
+    pub fn dirty(&self) -> bool {
+        self.wav_stream_bind_group_prev_idx != self.wav_stream_bind_group_idx
+    }
+
+    pub fn wav_stream_bind_group_idx_at_offset(&self, offset: u32) -> usize {
+        (dbg!(offset) as f32 / dbg!(COMPUTE_BUFFER_SIZE) as f32) as usize % COMPUTE_BUFFER_FACTOR
     }
 
     pub fn update_instances(&mut self, queue: &wgpu::Queue) {
@@ -119,7 +144,7 @@ impl State {
         //     .for_each(|v| self.rb.push(v));
 
         // let verts = self.rb.iter().map(|(x, y)| [x, y]).collect::<Vec<_>>();
-        let samples = SAMPLE_RENDER_COUNT;
+        let samples = COMPUTE_BUFFER_LEN;
 
         let verts = self
             .wav_streamer

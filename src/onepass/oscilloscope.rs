@@ -113,7 +113,8 @@ impl Oscilloscope {
         {
             let mut cpass = command_encoder.begin_compute_pass(&compute_pass_descriptor);
             cpass.set_pipeline(&self.compute_pipeline);
-            cpass.set_bind_group(0, &self.state.wav_stream_bind_groups[0], &[]);
+            let next = (self.state.wav_stream_bind_group_idx);
+            cpass.set_bind_group(0, &self.state.wav_stream_bind_groups[dbg!(next)], &[]);
             cpass.dispatch(64 as u32, 1, 1);
         }
         command_encoder.pop_debug_group();
@@ -157,7 +158,20 @@ impl Shaderer for Oscilloscope {
 
     fn update(&mut self) {
         self.state.update_uniforms();
-        self.state.update_instances(&self.wgpu_resources.queue);
+
+        if self.state.dirty() || self.state.frame == 1 {
+            self.state.update_instances(&self.wgpu_resources.queue);
+            let WgpuResources { device, queue, .. } = &self.wgpu_resources;
+
+            let mut command_encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Command Encoder"),
+                });
+            println!("cpass");
+            self.cpass(&mut command_encoder);
+            queue.submit(Some(command_encoder.finish()));
+        }
+
         self.state.write_queue(&self.wgpu_resources.queue);
     }
 
@@ -168,12 +182,6 @@ impl Shaderer for Oscilloscope {
             label: Some("Command Encoder"),
         });
 
-        if self.state.frame == 1 {
-            println!("cpass");
-            self.cpass(&mut command_encoder);
-        }
-
-        println!("rpass");
         self.rpass(&mut command_encoder, view);
         queue.submit(Some(command_encoder.finish()));
     }

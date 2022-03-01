@@ -140,13 +140,14 @@ impl<'a> WavStreamBinder<'a> {
         wavspec: &'a hound::WavSpec,
         sample_buffer_size: usize,
         compute_buffer_factor: usize,
+        compute_buffer_size: usize,
     ) -> Self {
         Self {
             wavspec,
             wgpu_resources,
             sample_buffer_size,
             compute_buffer_factor,
-            compute_buffer_size: sample_buffer_size / compute_buffer_factor,
+            compute_buffer_size,
         }
     }
 
