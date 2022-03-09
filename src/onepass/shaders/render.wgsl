@@ -26,6 +26,7 @@ fn main_vs(in: VertexInput) -> VertexOutput {
 
     var between = in.next - in.curr;
     var w = 1.0 - 10.0*length(between);
+    w = w * step(0.6, w);
 
     var color = vec3<f32>( 1.0, 1.0, 0.0 );
     var pos = in.curr + vec2<f32>(x,y);
@@ -36,7 +37,7 @@ fn main_vs(in: VertexInput) -> VertexOutput {
     pos = pos + norm * x;
 
     var z = mix(0.0, f32(in.v_id), uniforms.count);
-    color = mix(vec3<f32>(0.0, 0.0, 0.0), color, w) * z;
+    color = mix(vec3<f32>(0.0, 0.0, 0.0), color, w);
 
     return VertexOutput(
         vec4<f32>(pos, 0.0, 1.0),

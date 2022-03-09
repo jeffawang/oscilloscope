@@ -1,4 +1,4 @@
-use std::{num::NonZeroU64, time::Instant};
+use std::{cmp::max, num::NonZeroU64, time::Instant};
 
 use bytemuck::{Pod, Zeroable};
 use itertools::Itertools;
@@ -30,6 +30,8 @@ impl Default for Uniforms {
 pub struct State {
     pub frame: u32,
     start_time: Instant,
+    time: f32,
+    prev_time: f32,
     pub uniforms: Uniforms,
 
     pub uniform_buffer: wgpu::Buffer,
@@ -44,14 +46,16 @@ pub struct State {
     pub wav_stream_bind_groups: Vec<wgpu::BindGroup>,
     pub wav_stream_bind_group_layout: wgpu::BindGroupLayout,
 
+    offset: u64,
+
     wav_streamer: WavStreamer,
-    rb: RingBuffer<(f32, f32)>,
+    rb: RingBuffer<(i32, i32)>,
 }
 
 // TODO: parameterize these
 // TODO: Set COMPUTE_BUFFER_FACTOR > 1
-pub const SAMPLE_RENDER_COUNT: usize = 32000;
-pub const SAMPLE_BUFFER_SIZE: usize = 5 * 44100;
+pub const SAMPLE_RENDER_COUNT: usize = 128000;
+pub const SAMPLE_BUFFER_SIZE: usize = 20000;
 pub const COMPUTE_BUFFER_FACTOR: usize = 1;
 
 impl State {
@@ -79,12 +83,14 @@ impl State {
             &instance_buffer,
         );
 
-        let rb = RingBuffer::new(vec![(0.0, 0.0); SAMPLE_BUFFER_SIZE]);
+        let rb = RingBuffer::new(vec![(0, 0); SAMPLE_BUFFER_SIZE]);
 
         Self {
             frame: 0,
             uniforms: Uniforms::default(),
             start_time: Instant::now(),
+            time: 0.0,
+            prev_time: 0.0,
             uniform_buffer,
             uniform_bind_group_layout,
             uniform_bind_group,
@@ -97,6 +103,8 @@ impl State {
             wav_stream_bind_groups,
             wav_stream_bind_group_layout,
 
+            offset: 0,
+
             wav_streamer,
             rb,
         }
@@ -104,28 +112,48 @@ impl State {
 
     pub fn update_uniforms(&mut self) {
         self.frame += 1;
-        self.uniforms.time = Instant::now().duration_since(self.start_time).as_secs_f32();
+        self.prev_time = self.time;
+        self.time = Instant::now().duration_since(self.start_time).as_secs_f32();
+        self.uniforms.time = self.time;
         self.uniforms.frame = self.frame;
     }
 
     pub fn update_instances(&mut self, queue: &wgpu::Queue) {
-        // TODO: set sample count somewhere
-        // self.wav_streamer
-        //     .iter()
-        //     .take(samples as usize)
-        //     .for_each(|v| self.rb.push(v));
+        let hz = self.wav_streamer.spec.sample_rate as f32;
+        let dt = self.time - self.prev_time;
+        let sample_count = (hz * dt) as usize;
 
-        // let verts = self.rb.iter().map(|(x, y)| [x, y]).collect::<Vec<_>>();
-        let samples = SAMPLE_RENDER_COUNT;
-
-        let verts = self
+        let data = self
             .wav_streamer
             .iter()
-            .take(samples)
-            .map(|(x, y)| [x, y])
+            .take(sample_count)
+            .map(|(x, y)| [x as f32 / i16::MAX as f32, y as f32 / i16::MAX as f32])
             .collect_vec();
 
-        queue.write_buffer(&self.compute_buffer, 0, bytemuck::cast_slice(&verts));
+        let curr_offset = self.offset;
+        let next_offset = (curr_offset + sample_count as u64) % SAMPLE_BUFFER_SIZE as u64;
+        self.offset = next_offset;
+
+        if next_offset < curr_offset {
+            println!("====================");
+            let cutoff = (SAMPLE_BUFFER_SIZE as u64 - curr_offset) as usize;
+            queue.write_buffer(
+                &self.instance_buffer,
+                curr_offset * std::mem::size_of::<[f32; 2]>() as u64,
+                bytemuck::cast_slice(&data[..cutoff]),
+            );
+            queue.write_buffer(
+                &self.instance_buffer,
+                0,
+                bytemuck::cast_slice(&data[cutoff..]),
+            );
+        } else {
+            queue.write_buffer(
+                &self.instance_buffer,
+                curr_offset * std::mem::size_of::<[f32; 2]>() as u64,
+                bytemuck::cast_slice(&data),
+            );
+        }
     }
 
     pub fn write_queue(&self, queue: &wgpu::Queue) {

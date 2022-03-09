@@ -21,7 +21,7 @@ pub struct Vertex(pub [f32; 2]);
 
 impl Oscilloscope {
     fn new(wgpu_resources: WgpuResources) -> Self {
-        let state = state::State::new(&wgpu_resources, "music/07 Asteroids.wav");
+        let state = state::State::new(&wgpu_resources, "music/03 Blocks.wav");
         Self {
             render_pipeline: Oscilloscope::new_render_pipeline(&wgpu_resources, &state),
             compute_pipeline: Oscilloscope::new_compute_pipeline(&wgpu_resources, &state),
@@ -139,9 +139,9 @@ impl Oscilloscope {
         {
             let mut rpass = command_encoder.begin_render_pass(&render_pass_descriptor);
             rpass.set_pipeline(&self.render_pipeline);
-            rpass.set_vertex_buffer(0, self.state.instance_buffer.slice(32..)); // TODO: fill in this buffer
+            rpass.set_vertex_buffer(0, self.state.instance_buffer.slice(..)); // TODO: fill in this buffer
             rpass.set_bind_group(0, &self.state.uniform_bind_group, &[]);
-            rpass.draw(0..4, 0..(state::SAMPLE_RENDER_COUNT as u32)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
+            rpass.draw(0..4, 0..(state::SAMPLE_BUFFER_SIZE as u32)); // NOTE: this is one less than instance_buffer len because the last element wouldn't have a pair
         }
         command_encoder.pop_debug_group();
     }
@@ -165,10 +165,10 @@ impl Shaderer for Oscilloscope {
             label: Some("Command Encoder"),
         });
 
-        println!("cpass");
-        self.cpass(&mut command_encoder);
+        // println!("cpass");
+        // self.cpass(&mut command_encoder);
 
-        println!("rpass");
+        println!("rpass ({})", self.state.frame);
         self.rpass(&mut command_encoder, view);
         queue.submit(Some(command_encoder.finish()));
     }

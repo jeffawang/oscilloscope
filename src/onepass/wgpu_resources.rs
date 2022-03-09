@@ -92,7 +92,7 @@ impl<'a, T> UniformBinder<'a, T> {
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(mem::size_of::<T>() as _),
+                        min_binding_size: None,
                     },
                     count: None,
                 }],
